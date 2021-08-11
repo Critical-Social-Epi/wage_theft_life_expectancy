@@ -1,0 +1,1252 @@
+---
+title: "Wage theft analyses"
+author: "Jerzy Eisenberg-Guyot"
+date: "`r format(Sys.time(), '%B %Y')`"
+output: 
+  html_document:
+    number_sections: true
+    code_folding: hide
+    toc: true
+    toc_float: true
+    toc_depth: 5
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+TO DO: 
+
+-make sure SEs make sense
+-figure out inflation
+
+# Overview of primary analyses
+
+## Data and methods
+
+We based these simulations on 2001-2014 household (HH) income and life expectancy (LE) data from Chetty et al.'s 2016 JAMA paper (https://healthinequality.org/) and EPI's 2017 report on MW violations (https://www.epi.org/publication/employers-steal-billions-from-workers-paychecks-each-year/). First, we fitted an OLS model to Chetty’s pooled 2001-2014 data (200 rows, one for each gender-income percentile), with race-adjusted LE as the dependent variable and a gender * HH income interaction term as the independent variable (with HH income specified as a 7-knot restricted cubic spline), weighted by the frequency counts in the Chetty data. Second, we created a large simulated population (1.4mm - 1/1000th the size of the underlying Chetty sample), with HH income as observed in the Chetty data, counts of respondents at each HH income level and gender stratum as observed in the Chetty data, and LE in each stratum as predicted by the linear model. We also estimated LE in a hypothetical population in which wage theft were eliminated. To do so, we used the same approach, but at each HH income level, we created a hypothetical income variable that added back in workers' stolen wages, and used that hypothetical income variable to predict LE for each respondent in the population. We evaluated three scenarios regarding the prevalence and cost of wage theft for each gender and income stratum: 1) wage theft as common and costly as in the EPI data, 2) wage theft 2x as common and costly as in the EPI data, and 3) wage theft 3x as common and costly as in the EPI data. We then contrasted LE in the observed vs hypothetical scenarios overall and within income deciles for each gender. 
+
+To calculate the SE for our overall mean LE estimate for each gender under each scenario, I took the mean of the SEs provided by Chetty et al. for LE expectancy at each percentile of the income distribution and divided it by the square root of the number of LE estimates (100) [i.e., SE for population LE=mean(SE across income percentiles)/sqrt(100)]. I used a similar procedure to calculate SEs for the mean LE estimates within income deciles, but divided the mean SE within income deciles by the square root of 10 instead of by the square root of 100 [e.g., SE for LE in income decile 1=mean(SE within income decile 1)/sqrt(10)]. I assumed these SEs also applied to our estimates regarding the difference in mean LE across scenarios [i.e., SE for difference in population LE in observed data versus in scenario 1=mean(SE across income percentiles)/sqrt(100)].  
+
+## Key assumptions regarding wage-theft-LE relationship 
+
+* Income-LE relationship is 100% causal 
+* Income reported in Chetty data excludes stolen wages 
+* Recovering stolen wages affects LE solely through direct effects on individual-level income (i.e., no spillovers, no effects mediated through reductions in inequality, no effects mediated through pathways other than income, like reductions in stress from not feeling cheated, etc.)
+* No loss of means-tested benefits after stolen wages recovered
+* No loss of income at top of income distribution after stolen wages recovered 
+* Incomes independent across genders
+* EPI estimates apply straightforwardly to Chetty sample  
+
+```{r,  warning=FALSE, message=FALSE}
+library(tidyverse)
+library(rms)
+library(here)
+library(kableExtra)
+library(RColorBrewer)
+library(patchwork)
+library(directlabels)
+library(stringr)
+library(ggpubr)
+library(nleqslv)
+library(data.table)
+
+#load chetty data
+chetty <- read.csv(here('health_ineq_online_table_1.csv'))
+
+#fix and recode some vars
+chetty %>%
+  mutate(gnd=factor(ifelse(gnd=="M", "Men", "Women"), levels=c("Women", "Men")),
+         hh_inc=hh_inc*(352.6/337.3), #adjust Chetty estimates to 2016 dollars from 2012 dollars using CPI-U-RS (Chetty estimates in 2012 dollars, EPI estimates in 2016??)
+         hh_inc_cat=ifelse(hh_inc<10000, "<10000",
+                           ifelse(hh_inc>=10000 & hh_inc<25000, "10000-24999",
+                                  ifelse(hh_inc>=25000 & hh_inc<40000, "25000-39999",
+                                         ifelse(hh_inc>=40000 & hh_inc<60000, "40000-59999",
+                                                ifelse(hh_inc>=60000 & hh_inc<99999, "60000-99999",
+                                                       ifelse(hh_inc>=100000 & hh_inc<150000, "100000-149999",
+                                                              ifelse(hh_inc>=150000, "150000+", "del")))))))) -> chetty
+
+#merge in ACS data on population counts in 2014; don't need to adjust for inflation since only need to exclude those with $0 incomes
+fread(here("ACS_IPUMS.csv")) %>%
+  filter(FTOTINC>0 & AGE==40) %>% #family income yields similar estimates to household income, but I assume "family income" is a bit closer to Chetty's definition since joint tax filers are likely to be related
+  mutate(gnd=ifelse(SEX==1, "Men", "Women")) %>%
+  group_by(gnd) %>%
+  summarise(ACS_pop=sum(PERWT)) %>%
+  right_join(chetty, by="gnd") -> chetty #~2.05-2.1 million of each gender
+```
+
+# Chetty data 
+
+## Sample of data
+
+```{r warning=FALSE, message=FALSE}
+kable(chetty[1:10,c(1,3:11)], digits=2) %>% 
+  kable_styling('striped')
+```
+
+## Observed income-LE relationship in Chetty data
+
+```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=4.25}
+#labels
+xlabels <- c("14\n(10)", "37\n(30)", "62\n(50)", "96\n(70)", "168\n(90)")
+
+ggplot(subset(chetty, hh_inc<311000), aes(x=hh_inc, y=le_raceadj, group=gnd, color=gnd, label=gnd, fill=gnd)) + 
+  geom_line(arrow = arrow(length=unit(0.30,"cm"), ends="last", type = "open")) + 
+  geom_ribbon(aes(ymin=le_raceadj-1.96*sd_le_raceadj, ymax=le_raceadj+1.96*sd_le_raceadj), alpha=0.2, lty=0) +
+  geom_dl(method='smart.grid') +
+  scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
+  scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
+  ylab("Life expectancy") + 
+  xlab("Household income in thousands\n(Household income percentile)") +
+  scale_y_continuous(limits=c(72.5, 89.5), expand=expansion(mult=c(0.0,0.01))) +
+  scale_x_continuous(breaks=c(14000, 37000, 62000, 96000, 168000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0,0.025))) +
+  theme_light() +
+  theme(legend.position="none")
+```
+
+# EPI data on MW violations
+
+The EPI are estimates are based on CPS data from 2013-2015. The estimates in the EPI data and the Chetty data generalize to different populations - the EPI estimates came from a sample of MW-eligible workers (88% of all workers) of any age at each family income level in the 10 largest U.S. cities, while the Chetty estimates are age-40 life expectancy among positive earners in the entire U.S. population at each HH income level.  
+
+The EPI data contains the income-pooled ratio of the prevalence of wage theft among women versus men (4.9% vs 3.5%; similar in NELP data), the gender-pooled prevalence of wage theft among each household income strata, the gender-pooled cost of wage theft among each household income strata, and the gender composition of MW eligible workers (women are 46.6% of MW eligible workers). To calculate the gender-specific prevalence of wage theft among each household income strata, we used simultaneous equations, assuming the overall women/men wage theft prevalence ratio held within income strata. It probably doesn't precisely, since one reason women experience more wage theft than men is that they're segregated into lower-income jobs (luckily, the distribution of family income across genders doesn't vary much). We assumed the cost of wage theft within each household income strata was the same across genders, which the EPI data suggests is approximately true, income aside. 
+
+```{r warning=FALSE, message=FALSE}
+theft <- read.csv(here('epi_data_national.csv'), fileEncoding="UTF-8-BOM")
+
+#estimate prevalence of theft among women and men within each income category and state using simultaneous equations
+binded <- NULL
+for(i in 1:length(theft$gnd_ratio)){
+  fn <- function(x){
+    eq1 <- x[1]/x[2] - theft$gnd_ratio[i]
+    eq2 <- (0.466*x[1] + 0.534*x[2]) -  theft$prop_theft[i]
+    return(c(eq1, eq2))
+  }
+  binded <- rbind(binded, nleqslv(c(1,5), fn)$x)
+}
+
+#stack gender-specific datasets
+theft <- rbind(theft[,c(1:2,5:6)],
+               data.frame(hh_inc_cat=theft$hh_inc_cat, prop_theft=binded[,1], yr_theft=theft$yr_theft, gnd="Women"),
+               data.frame(hh_inc_cat=theft$hh_inc_cat, prop_theft=binded[,2], yr_theft=theft$yr_theft, gnd="Men"))
+
+#print
+kable(theft, col.names=c("Family income", "Percent wage theft", "Annual underpayment", "Gender"), digits=2) %>% 
+  kable_styling("striped") %>%
+  group_rows("Overall", 1, 7) %>%
+  group_rows("Women (estimated)", 8, 14) %>%
+  group_rows("Men (estimated)", 15, 21) %>%
+  scroll_box(width = "100%", height = "500px") 
+
+#merge the EPI and chetty data
+merge(chetty, theft, c("hh_inc_cat", "gnd")) %>% 
+  arrange(gnd, pctile) -> chetty
+```
+
+# Primary analyses 
+
+```{r warning=FALSE, message=FALSE}
+#scenario function
+int_func <- function(prop, inc, scenario){#prop and inc are multipliers for EPI theft prevalence and cost estimates
+  
+  #seed
+  set.seed(4325)
+  
+  #create sample
+  chetty_tot %>%
+    group_by(gnd, hh_inc_cat) %>%
+    sample_frac(size=prop_theft*prop, replace=F) %>%
+    mutate(hh_inc_rev=hh_inc + inc*yr_theft) %>%
+    ungroup() %>% 
+    dplyr::select('id', 'hh_inc_rev') -> chetty_samps
+  
+  #create hypothetical income variable
+  chetty_tot %>%
+    left_join(chetty_samps, by='id') %>%
+    mutate(hh_inc=ifelse(!is.na(hh_inc_rev), hh_inc_rev, hh_inc)) %>%
+    dplyr::select(-hh_inc_rev) -> chetty_tot_int
+  
+  #simulate LE using fitted model and hypothetical income 
+  int1 <- cbind(chetty_tot_int, data.frame(sim_1=predict(fit, newdata = chetty_tot_int, type="response")), data.frame(type=scenario))
+}
+
+#7 spline knots since underlying data are based on over a billion observations  
+knots_7 <- as.numeric(quantile(chetty$hh_inc, c(.025, .1833, .3417, .5, .6583, .8167, .975)))
+
+#fit models to Chetty data to interpolate across chunky income values and smooth across random dips
+fit <- lm(le_raceadj ~ rcs(hh_inc, parms=knots_7)*gnd, data=chetty, w=count)
+
+#create large expanded Chetty dataset -> we'll use this to get weighed average estimates for our various scenarios
+data.frame(pctile=rep(chetty$pctile, chetty$count/1000), 
+           hh_inc=rep(chetty$hh_inc, chetty$count/1000),
+           hh_inc_cat=rep(chetty$hh_inc_cat, chetty$count/1000),
+           prop_theft=rep(chetty$prop_theft, chetty$count/1000),
+           yr_theft=rep(chetty$yr_theft, chetty$count/1000),
+           gnd=rep(chetty$gnd, chetty$count/1000),
+           sd=rep(chetty$sd_le_raceadj, chetty$count/1000),
+           ACS_pop=rep(chetty$ACS_pop, chetty$count/1000)) %>%
+  mutate(id=row_number()) -> chetty_tot
+
+#observed income-LE relationship from fitted model
+obs <- cbind(chetty_tot, data.frame(sim_1=predict(fit, newdata = chetty_tot, type="response")), data.frame(type="Observed"))
+
+#predicted LE under hypothetical scenarios
+int1 <- int_func(prop=1, inc=1, scenario="Scenario 1")
+int2 <- int_func(prop=2, inc=2, scenario="Scenario 2")
+int3 <- int_func(prop=3, inc=3, scenario="Scenario 3")
+
+#bind together
+binded <- rbind(obs, int1, int2, int3)
+```
+
+## Density of income distribution below median across scenarios 
+
+```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=6}
+#estimate mean income in each scenario in bottom half of income distribution
+binded %>%
+  filter(pctile<=50) %>%
+  group_by(type) %>%
+  summarise(mean_hh_inc=mean(hh_inc)) %>%
+  left_join(binded, 'type') -> binded
+
+#plot
+ggplot(subset(binded, pctile<=50), aes(x=hh_inc/1000, color=type, group=type)) +
+  geom_density() +
+  geom_vline(aes(xintercept=mean_hh_inc/1000, group=type, color=type), lty=2) +
+  xlab("Household income in thousands") +
+  ylab("Density") +
+  scale_color_manual(values=c("#1F78B4", "#6A3D9A", "#33A02C", "#FF7F00")) +
+  scale_x_continuous(expand=expansion(mult=c(0,0.025))) +
+  theme_light() +
+  theme(legend.title=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(),
+        strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black")) + 
+  guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+```
+
+## Estimated income-LE relationship under observed scenario
+
+```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=4.25}
+#remove duplicated rows since they're identical for each income level
+obs %>% 
+  filter(!duplicated(paste(gnd, pctile))) -> obs_sub
+
+#labels
+xlabels <- c("14\n(10)", "37\n(30)", "62\n(50)", "96\n(70)", "168\n(90)")
+
+ggplot(subset(obs_sub, hh_inc<311000), aes(x=hh_inc, y=sim_1, group=gnd, color=gnd, label=gnd, fill=gnd)) + 
+  geom_line(arrow = arrow(length=unit(0.30,"cm"), ends="last", type = "open")) + 
+  geom_ribbon(aes(ymin=sim_1 - 1.96 * sd, ymax=sim_1 + 1.96 * sd), alpha=0.2, lty=0) +
+  geom_dl(method='smart.grid') +
+  scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
+  scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
+  ylab("Life expectancy") + 
+  xlab("Household income in thousands\n(Household income percentile)") +
+  scale_y_continuous(limits=c(74, 89.5), expand=expansion(mult=c(0.0,0.01))) +
+  scale_x_continuous(breaks=c(14000, 37000, 62000, 96000, 168000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0,0.025))) +
+  theme_light() +
+  theme(legend.position="none")
+
+ggsave('fig_1.png', height=4, width=4.25, dpi=600)
+```
+
+## Point estimates
+
+```{r warning=FALSE, message=FALSE}
+#point estimates for difference in mean life expectancy across scenarios
+binded %>% 
+  group_by(type, gnd) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (100 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(100))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(100))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(100))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(100))),
+         diff_pop=diff*ACS_pop,
+         diff_lower_pop=diff_lower*ACS_pop,
+         diff_upper_pop=diff_upper*ACS_pop) %>% 
+  dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
+  arrange(desc(gnd), type) -> overall
+
+#point estimates for difference in mean life expectancy across scenarios within affected group
+binded %>% 
+  filter(pctile<=10) %>%
+  group_by(type, gnd) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+         diff_pop=diff*ACS_pop*0.1,
+         diff_lower_pop=diff_lower*ACS_pop*0.1,
+         diff_upper_pop=diff_upper*ACS_pop*0.1) %>% 
+  dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
+  arrange(desc(gnd), type) -> affected
+
+#point estimates for difference in mean life expectancy across scenarios within unaffected group
+binded %>% 
+  filter(pctile>90) %>%
+  group_by(type, gnd) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+         diff_pop=diff*ACS_pop*0.1,
+         diff_lower_pop=diff_lower*ACS_pop*0.1,
+         diff_upper_pop=diff_upper*ACS_pop*0.1) %>% 
+  dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
+  arrange(desc(gnd), type) -> unaffected
+
+#print
+kable(rbind(overall, affected, unaffected), digits=c(2,2,2,2,2,2,2,2,0,0,0), 
+      col.names=c("", "Scenario", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper")) %>%
+  kable_styling("striped") %>%
+  add_header_above(c(" "=2, "Mean LE"=3, "Diff in mean LE"=3, "Total years of LE extended"=3)) %>%
+  group_rows("Overall", 1, 8) %>%
+  group_rows("Lower HH income decile", 9, 16) %>%
+  group_rows("Upper HH income decile", 17, 24)
+```
+
+## Plots
+
+```{r warning=FALSE, message=FALSE, fig.height=6, fig.width=8.5}
+#difference in mean life expectancy across scenarios at each decile
+binded %>% 
+  mutate(decile=cut_interval(pctile, 10),
+         gnd=factor(gnd, levels=c("Women", "Men"))) %>%
+  group_by(gnd, decile, type) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  arrange(gnd, decile, type) %>%
+  ungroup() %>%
+  group_by(gnd, decile) %>%
+  mutate(diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+         diff_pop=diff*ACS_pop*0.1,
+         diff_lower_pop=diff_lower*ACS_pop*0.1,
+         diff_upper_pop=diff_upper*ACS_pop*0.1) %>% 
+  filter(type!="Observed") %>%
+  dplyr::select('gnd', 'type', 'decile', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop", "ACS_pop") -> deciles
+
+#plot diffs
+p1 <- ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
+  facet_wrap(~gnd) +
+  geom_hline(yintercept=0, lty=2, color="darkgrey") +
+  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=3, position=position_dodge(width=0.8)) + 
+  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  ylab("Difference in mean life expectancy") +
+  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
+  theme_light() +
+  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
+        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+
+#plot years extended
+p2 <- ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=type)) + 
+  facet_wrap(~gnd) +
+  geom_hline(yintercept=0, lty=2, color="darkgrey") +
+  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=3, position=position_dodge(width=0.8)) + 
+  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  ylab("Years of life expectancy extended") +
+  xlab("Household income decile") +
+  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
+  scale_x_discrete(labels=c('1', "2", "3", "4", "5", "6", "7", "8", "9", "10")) +
+  theme_light() +
+  theme(strip.background=element_blank(), strip.text=element_blank())
+
+p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+
+ggsave('fig_2.png', height=6, width=8.5, dpi=600)
+```
+
+# Supplementary analyses
+
+## Using 2014 data alone
+
+```{r warning=FALSE, message=FALSE}
+#######create 2014 dataset
+####
+#
+read.csv(here('health_ineq_online_table_2.csv')) %>%
+  filter(year==2014) %>%
+  mutate(gnd=factor(ifelse(gnd=="M", "Men", "Women"), levels=c("Women", "Men")),
+         hh_inc=hh_inc*(352.6/337.3), #adjust Chetty estimates to 2016 dollars from 2012 dollars using CPI-U-RS (Chetty estimates in 2012 dollars, EPI estimates in 2016??)
+         hh_inc_cat=ifelse(hh_inc<10000, "<10000",
+                           ifelse(hh_inc>=10000 & hh_inc<25000, "10000-24999",
+                                  ifelse(hh_inc>=25000 & hh_inc<40000, "25000-39999",
+                                         ifelse(hh_inc>=40000 & hh_inc<60000, "40000-59999",
+                                                ifelse(hh_inc>=60000 & hh_inc<99999, "60000-99999",
+                                                       ifelse(hh_inc>=100000 & hh_inc<150000, "100000-149999",
+                                                              ifelse(hh_inc>=150000, "150000+", "del")))))))) -> chetty_2014
+
+#merge in ACS data on population counts in 2014; don't need to adjust for inflation since only need to exclude those with $0 incomes
+fread(here("ACS_IPUMS.csv")) %>%
+  filter(FTOTINC>0 & AGE==40) %>% #family income yields similar estimates to household income, but I assume "family income" is a bit closer to Chetty's definition since joint tax filers are likely to be related
+  mutate(gnd=ifelse(SEX==1, "Men", "Women")) %>%
+  group_by(gnd) %>%
+  summarise(ACS_pop=sum(PERWT)) %>%
+  right_join(chetty_2014, by="gnd") -> chetty_2014 #~2.05-2.1 million of each gender
+
+#merge the EPI and chetty data
+merge(chetty_2014, theft, c("hh_inc_cat", "gnd")) %>% 
+  arrange(gnd, pctile) -> chetty_2014
+```
+
+```{r warning=FALSE, message=FALSE}
+#scenario function
+int_func <- function(prop, inc, scenario){#prop and inc are multipliers for EPI theft prevalence and cost estimates
+  
+  #seed
+  set.seed(4325)
+  
+  #create sample
+  chetty_tot_2014 %>%
+    group_by(gnd, hh_inc_cat) %>%
+    sample_frac(size=prop_theft*prop, replace=F) %>%
+    mutate(hh_inc_rev=hh_inc + inc*yr_theft) %>%
+    ungroup() %>% 
+    dplyr::select('id', 'hh_inc_rev') -> chetty_samps_2014
+  
+  #create hypothetical income variable
+  chetty_tot_2014 %>%
+    left_join(chetty_samps_2014, by='id') %>%
+    mutate(hh_inc=ifelse(!is.na(hh_inc_rev), hh_inc_rev, hh_inc)) %>%
+    dplyr::select(-hh_inc_rev) -> chetty_tot_int_2014
+  
+  #simulate LE using fitted model and hypothetical income 
+  int1 <- cbind(chetty_tot_int_2014, data.frame(sim_1=predict(fit, newdata = chetty_tot_int_2014, type="response")), data.frame(type=scenario))
+}
+
+#7 spline knots since underlying data are based on over a billion observations  
+knots_7 <- as.numeric(quantile(chetty_2014$hh_inc, c(.025, .1833, .3417, .5, .6583, .8167, .975)))
+
+#fit models to Chetty data to interpolate across chunky income values and smooth across random dips
+fit <- lm(le_raceadj ~ rcs(hh_inc, parms=knots_7)*gnd, data=chetty_2014, w=count)
+
+#create large expanded Chetty dataset -> we'll use this to get weighed average estimates for our various scenarios
+data.frame(pctile=rep(chetty_2014$pctile, chetty_2014$count/100), 
+           hh_inc=rep(chetty_2014$hh_inc, chetty_2014$count/100),
+           hh_inc_cat=rep(chetty_2014$hh_inc_cat, chetty_2014$count/100),
+           prop_theft=rep(chetty_2014$prop_theft, chetty_2014$count/100),
+           yr_theft=rep(chetty_2014$yr_theft, chetty_2014$count/100),
+           gnd=rep(chetty_2014$gnd, chetty_2014$count/100),
+           sd=rep(chetty_2014$sd_le_raceadj, chetty_2014$count/100),
+           ACS_pop=rep(chetty_2014$ACS_pop, chetty_2014$count/100)) %>%
+  mutate(id=row_number()) -> chetty_tot_2014
+
+#observed income-LE relationship from fitted model
+obs <- cbind(chetty_tot_2014, data.frame(sim_1=predict(fit, newdata = chetty_tot_2014, type="response")), data.frame(type="Observed"))
+
+#predicted LE under hypothetical scenarios
+int1 <- int_func(prop=1, inc=1, scenario="Scenario 1")
+int2 <- int_func(prop=2, inc=2, scenario="Scenario 2")
+int3 <- int_func(prop=3, inc=3, scenario="Scenario 3")
+
+#bind together
+binded <- rbind(obs, int1, int2, int3)
+```
+
+### Estimated income-LE relationship under observed scenario
+
+```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=4.25}
+#remove duplicated rows since they're identical for each income level
+obs %>% 
+  filter(!duplicated(paste(gnd, pctile))) -> obs_sub
+
+#labels
+xlabels <- c("13\n(10)", "34\n(30)", "58\n(50)", "92\n(70)", "164\n(90)")
+
+ggplot(subset(obs_sub, hh_inc<311000), aes(x=hh_inc, y=sim_1, group=gnd, color=gnd, label=gnd, fill=gnd)) + 
+  geom_line(arrow = arrow(length=unit(0.30,"cm"), ends="last", type = "open")) + 
+  geom_ribbon(aes(ymin=sim_1 - 1.96 * sd, ymax=sim_1 + 1.96 * sd), alpha=0.2, lty=0) +
+  geom_dl(method='smart.grid') +
+  scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
+  scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
+  ylab("Life expectancy") + 
+  xlab("Household income in thousands\n(Household income percentile)") +
+  scale_y_continuous(limits=c(74, 91.5), expand=expansion(mult=c(0.0,0.01))) +
+  scale_x_continuous(breaks=c(13000, 34000, 58000, 92000, 164000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0,0.025))) +
+  theme_light() +
+  theme(legend.position="none")
+
+ggsave('appendix_1a.png', height=4, width=4.25, dpi=600)
+```
+
+### Point estimates
+
+```{r warning=FALSE, message=FALSE}
+#point estimates for difference in mean life expectancy across scenarios
+binded %>% 
+  group_by(type, gnd) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (100 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(100))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(100))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(100))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(100))),
+         diff_pop=diff*ACS_pop,
+         diff_lower_pop=diff_lower*ACS_pop,
+         diff_upper_pop=diff_upper*ACS_pop) %>% 
+  dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
+  arrange(desc(gnd), type) -> overall
+
+#point estimates for difference in mean life expectancy across scenarios within affected group
+binded %>% 
+  filter(pctile<=10) %>%
+  group_by(type, gnd) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+         diff_pop=diff*ACS_pop*0.1,
+         diff_lower_pop=diff_lower*ACS_pop*0.1,
+         diff_upper_pop=diff_upper*ACS_pop*0.1) %>% 
+  dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
+  arrange(desc(gnd), type) -> affected
+
+#point estimates for difference in mean life expectancy across scenarios within unaffected group
+binded %>% 
+  filter(pctile>90) %>%
+  group_by(type, gnd) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+         diff_pop=diff*ACS_pop*0.1,
+         diff_lower_pop=diff_lower*ACS_pop*0.1,
+         diff_upper_pop=diff_upper*ACS_pop*0.1) %>% 
+  dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
+  arrange(desc(gnd), type) -> unaffected
+
+#print
+kable(rbind(overall, affected, unaffected), digits=c(2,2,2,2,2,2,2,2,0,0,0), 
+      col.names=c("", "Scenario", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper")) %>%
+  kable_styling("striped") %>%
+  add_header_above(c(" "=2, "Mean LE"=3, "Diff in mean LE"=3, "Total years of LE extended"=3)) %>%
+  group_rows("Overall", 1, 8) %>%
+  group_rows("Lower HH income decile", 9, 16) %>%
+  group_rows("Upper HH income decile", 17, 24)
+```
+
+### Plots
+
+```{r warning=FALSE, message=FALSE, fig.height=6, fig.width=8.5}
+#difference in mean life expectancy across scenarios at each decile
+binded %>% 
+  mutate(decile=cut_interval(pctile, 10),
+         gnd=factor(gnd, levels=c("Women", "Men"))) %>%
+  group_by(gnd, decile, type) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  arrange(gnd, decile, type) %>%
+  ungroup() %>%
+  group_by(gnd, decile) %>%
+  mutate(diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+         diff_pop=diff*ACS_pop*0.1,
+         diff_lower_pop=diff_lower*ACS_pop*0.1,
+         diff_upper_pop=diff_upper*ACS_pop*0.1) %>% 
+  filter(type!="Observed") %>%
+  dplyr::select('gnd', 'type', 'decile', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") -> deciles
+
+#plot diffs
+p1 <- ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
+  facet_wrap(~gnd) +
+  geom_hline(yintercept=0, lty=2, color="darkgrey") +
+  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=3, position=position_dodge(width=0.8)) + 
+  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  ylab("Difference in mean life expectancy") +
+  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
+  theme_light() +
+  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
+        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+
+#plot years extended
+p2 <- ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=type)) + 
+  facet_wrap(~gnd) + 
+  geom_hline(yintercept=0, lty=2, color="darkgrey") +
+  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=3, position=position_dodge(width=0.8)) + 
+  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  ylab("Years of life expectancy extended") +
+  xlab("Household income decile") +
+  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
+  scale_x_discrete(labels=c('1', "2", "3", "4", "5", "6", "7", "8", "9", "10")) +
+  theme_light() +
+  theme(strip.background=element_blank(), strip.text=element_blank())
+
+p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+
+ggsave('appendix_1b.png', height=6, width=8.5, dpi=600)
+```
+
+### Income-life-expectancy relationship by year
+
+Doesn't change much at lower end of distribution, where wage theft scenarios have strongest effect, so pooling across years seems smart to boost precision.
+
+```{r warning=FALSE, message=FALSE, fig.height=5, fig.width=13}
+read.csv(here('health_ineq_online_table_2.csv')) %>%
+  mutate(hh_inc=hh_inc*(352.6/337.3), #adjust Chetty estimates to 2016 dollars from 2012 dollars using CPI-U-RS (Chetty estimates in 2012 dollars, EPI estimates in 2016??)
+         gnd=factor(ifelse(gnd=="M", "Men", "Women"), levels=c("Women", "Men"))) -> chetty_annual
+
+ggplot(subset(chetty_annual, pctile<=80), aes(x=hh_inc, y=le_raceadj, group=gnd, color=gnd, label=gnd, fill=gnd)) + 
+  facet_wrap(~year, nrow=2) +
+  geom_line() + 
+  scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
+  scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
+  ylab("Life expectancy") +
+  xlab("Household income in thousands (excluding top 20%)") +
+  scale_y_continuous(expand=expansion(mult=c(0.0,0.1))) +
+  scale_x_continuous(breaks=c(0, 30000, 60000, 90000, 120000), labels=c("0", "30", "60", "90", "120"), expand=expansion(mult=c(0.0,0.04))) +
+  theme_light() +
+  guides(color=guide_legend(nrow=2,byrow=TRUE)) +
+  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"), legend.title=element_blank())
+
+ggsave("appendix_2.png", height=5, width=13, dpi=600)
+```
+
+## Modifying strength of income-mortality relationship
+
+Effects of scenarios if we assume income only affects LE for 1/2 of respondents (i.e., we keep 1/2 of respondents’ incomes as observed in the data rather than returning their stolen wages)
+
+```{r warning=FALSE, message=FALSE}
+#scenario function
+int_func <- function(prop, inc, scenario){#prop and inc are multipliers for EPI theft prevalence and cost estimates
+  
+  #seed
+  set.seed(4325)
+  
+  #create sample
+  chetty_tot %>%
+    group_by(gnd, hh_inc_cat) %>%
+    sample_frac(size=prop_theft*prop, replace=F) %>%
+    mutate(hh_inc_rev=hh_inc + inc*yr_theft) %>%
+    ungroup() %>% 
+    dplyr::select('id', 'hh_inc_rev') -> chetty_samps
+  
+  #create hypothetical income variable
+  chetty_tot %>%
+    left_join(chetty_samps, by='id') %>%
+    mutate(hh_inc=ifelse(!is.na(hh_inc_rev), hh_inc_rev, hh_inc)) %>%
+    dplyr::select(-hh_inc_rev) -> chetty_tot_int
+  
+  #simulate LE using fitted model and hypothetical income 
+  int1 <- cbind(chetty_tot_int, data.frame(sim_1=predict(fit, newdata = chetty_tot_int, type="response")), data.frame(type=scenario))
+}
+
+#7 spline knots since underlying data are based on over a billion observations  
+knots_7 <- as.numeric(quantile(chetty$hh_inc, c(.025, .1833, .3417, .5, .6583, .8167, .975)))
+
+#fit models to Chetty data to interpolate across chunky income values and smooth across random dips
+fit <- lm(le_raceadj ~ rcs(hh_inc, parms=knots_7)*gnd, data=chetty, w=count)
+
+#create large expanded Chetty dataset -> we'll use this to get weighed average estimates for our various scenarios
+data.frame(pctile=rep(chetty$pctile, chetty$count/1000), 
+           hh_inc=rep(chetty$hh_inc, chetty$count/1000),
+           hh_inc_cat=rep(chetty$hh_inc_cat, chetty$count/1000),
+           prop_theft=rep(chetty$prop_theft, chetty$count/1000),
+           yr_theft=rep(chetty$yr_theft, chetty$count/1000),
+           gnd=rep(chetty$gnd, chetty$count/1000),
+           sd=rep(chetty$sd_le_raceadj, chetty$count/1000),
+           ACS_pop=rep(chetty$ACS_pop, chetty$count/1000)) %>%
+  mutate(id=row_number()) -> chetty_tot
+
+#predict LE using fitted model and observed income values in expanded Chetty data
+obs <- cbind(chetty_tot, data.frame(sim_1=predict(fit, newdata = chetty_tot, type="response")), data.frame(type="Observed"))
+  
+#simulate LE under hypothetical scenarios
+int1 <- int_func(prop=1/2, inc=1, scenario="Scenario 1: 1/2")
+int2 <- int_func(prop=2/2, inc=1, scenario="Scenario 1: 2/2")
+int3 <- int_func(prop=1/2*2, inc=2, scenario="Scenario 2: 1/2")
+int4 <- int_func(prop=2/2*2, inc=2, scenario="Scenario 2: 2/2")
+int5 <- int_func(prop=1/2*3, inc=3, scenario="Scenario 3: 1/2")
+int6 <- int_func(prop=2/2*3, inc=3, scenario="Scenario 3: 2/2")
+
+#bind together
+binded <- rbind(obs, int1, int2, int3, int4, int5, int6)
+```
+
+## Point estimates
+
+```{r warning=FALSE, message=FALSE}
+#point estimates for difference in mean life expectancy across scenarios
+binded %>% 
+  group_by(type, gnd) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (100 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(100))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(100))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(100))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(100))),
+         diff_pop=diff*ACS_pop,
+         diff_lower_pop=diff_lower*ACS_pop,
+         diff_upper_pop=diff_upper*ACS_pop) %>% 
+  dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
+  arrange(desc(gnd), type) -> overall
+
+#point estimates for difference in mean life expectancy across scenarios within affected group
+binded %>% 
+  filter(pctile<=10) %>%
+  group_by(type, gnd) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+         diff_pop=diff*ACS_pop*0.1,
+         diff_lower_pop=diff_lower*ACS_pop*0.1,
+         diff_upper_pop=diff_upper*ACS_pop*0.1) %>% 
+  dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
+  arrange(desc(gnd), type) -> affected
+
+#point estimates for difference in mean life expectancy across scenarios within unaffected group
+binded %>% 
+  filter(pctile>90) %>%
+  group_by(type, gnd) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+         diff_pop=diff*ACS_pop*0.1,
+         diff_lower_pop=diff_lower*ACS_pop*0.1,
+         diff_upper_pop=diff_upper*ACS_pop*0.1) %>% 
+  dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
+  arrange(desc(gnd), type) -> unaffected
+
+#print
+kable(rbind(overall, affected, unaffected), digits=c(2,2,2,2,2,2,2,2,0,0,0), 
+      col.names=c("", "Scenario", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper")) %>%
+  kable_styling("striped") %>%
+  add_header_above(c(" "=2, "Mean LE"=3, "Diff in mean LE"=3, "Total years of LE extended"=3)) %>%
+  group_rows("Overall", 1, 14) %>%
+  group_rows("Lower HH income decile", 15, 28) %>%
+  group_rows("Upper HH income decile", 29, 42)
+```
+
+## Plots
+
+```{r warning=FALSE, message=FALSE, fig.height=6.25, fig.width=12}
+#difference in mean life expectancy across scenarios at each decile
+binded %>% 
+  mutate(decile=cut_interval(pctile, 10),
+         gnd=factor(gnd, levels=c("Women", "Men"))) %>%
+  group_by(gnd, decile, type) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  arrange(gnd, decile, type) %>%
+  ungroup() %>%
+  group_by(gnd, decile) %>%
+  mutate(diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+         diff_pop=diff*ACS_pop*0.1,
+         diff_lower_pop=diff_lower*ACS_pop*0.1,
+         diff_upper_pop=diff_upper*ACS_pop*0.1) %>% 
+  filter(type!="Observed") %>%
+  dplyr::select('gnd', 'type', 'decile', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") -> deciles
+
+#plot diffs
+p1 <- ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
+  facet_wrap(~gnd) +
+  geom_hline(yintercept=0, lty=2, color="darkgrey") +
+  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=2, position=position_dodge(width=1.0)) + 
+  scale_color_manual(values=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00")) +
+  scale_fill_manual(values=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00")) +
+  ylab("Difference in mean life expectancy") +
+  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
+  theme_light() +
+  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
+        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+
+#plot years extended
+p2 <- ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=type)) + 
+  facet_wrap(~gnd) + 
+  geom_hline(yintercept=0, lty=2, color="darkgrey") +
+  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=2, position=position_dodge(width=1.0)) + 
+  scale_color_manual(values=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00")) +
+  scale_fill_manual(values=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00")) +
+  ylab("Years of life expectancy extended") +
+  xlab("Household income decile") +
+  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
+  scale_x_discrete(labels=c('1', "2", "3", "4", "5", "6", "7", "8", "9", "10")) +
+  theme_light() +
+  theme(strip.background=element_blank(), strip.text=element_blank())
+
+p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+
+ggsave('appendix_3.png', height=6.25, width=12, dpi=600)
+```
+
+## City-specific estimates
+
+Analyzed Detroit and NYC as examples of disparate effects of scenarios geographically.
+
+```{r,  warning=FALSE, message=FALSE}
+#load national and msa-level chetty data
+chetty_nat <- read.csv(here('health_ineq_online_table_1.csv'))
+read.csv(here('health_ineq_online_table_7.csv')) %>%
+  filter(czname %in% c('Detroit', 'New York City')) %>%
+  select(c(2, seq(8,164,2), 166:206)) -> chetty_msa
+
+#calculate mean income by ventile across years so that we can fit wage theft models - these match published estimates in Chetty paper presented in Figure 4
+chetty_nat %>%
+  mutate(pctile=ntile(pctile, 20)) %>%
+  group_by(gnd, pctile) %>%
+  summarise(hh_inc=weighted.mean(hh_inc, w=count)) %>%
+  mutate(gnd=factor(ifelse(gnd=="M", "Men", "Women"), c("Women", "Men"))) -> chetty_nat_summed 
+
+#make chetty msa data long
+chetty_msa %>%
+  pivot_longer(cols=-1) %>% 
+  mutate(variable=ifelse(substr(name, 1, 5)=="count", "count", 
+                      ifelse(substr(name, 1, 2)=="le", "le_raceadj",
+                             ifelse(substr(name, 1, 2)=="sd", "sd_le_raceadj", NA))),
+         gnd=factor(ifelse(str_sub(name, -2, -1)=="_F", "Women", "Men"), c("Women", "Men")),
+         pctile=as.numeric(ifelse(str_sub(name, -4, -4)=="v", str_sub(name, -3, -3), 
+                                  ifelse(str_sub(name, -5, -5)=="v", str_sub(name, -4, -3), "error")))) %>%
+  select(-"name") %>%
+  pivot_wider(names_from=variable, values_from=value) -> chetty_msa_long
+
+#merge msa and national data to get hh_income values
+chetty_msa_long <- merge(chetty_msa_long, chetty_nat_summed, by=c('gnd', 'pctile'))
+
+#make categorical income variable for merging Chetty and EPI data; make state variable for same purpose
+chetty_msa_long %>%
+  mutate(hh_inc=hh_inc*(352.6/337.3), #adjust Chetty estimates to 2016 dollars from 2012 dollars using CPI-U-RS (Chetty estimates in 2012 dollars, EPI estimates in 2016??)
+         hh_inc_cat=ifelse(hh_inc<10000, "<10000",
+                           ifelse(hh_inc>=10000 & hh_inc<25000, "10000-24999",
+                                  ifelse(hh_inc>=25000 & hh_inc<40000, "25000-39999",
+                                         ifelse(hh_inc>=40000 & hh_inc<60000, "40000-59999",
+                                                ifelse(hh_inc>=60000 & hh_inc<99999, "60000-99999",
+                                                       ifelse(hh_inc>=100000 & hh_inc<150000, "100000-149999",
+                                                              ifelse(hh_inc>=150000, "150000+", "error"))))))),
+         state=ifelse(czname=="Detroit", "Michigan", "New York")) %>%
+  arrange(czname, pctile, gnd) -> chetty_msa_long
+
+#merge in ACS data on population counts; don't need to adjust for inflation since only need to exclude those with $0 incomes
+fread(here("ACS_IPUMS.csv")) %>%
+  filter(FTOTINC>0 & AGE==40 & (MET2013==19820 | MET2013==35620)) %>% 
+  mutate(gnd=ifelse(SEX==1, "Men", "Women"),
+         czname=ifelse(MET2013==19820, "Detroit", "New York City")) %>%
+  group_by(gnd, czname) %>%
+  summarise(ACS_pop=sum(PERWT)) %>%
+  right_join(chetty_msa_long, by=c("gnd", "czname")) -> chetty_msa_long
+```
+
+### Chetty data 
+
+#### Sample of data
+
+```{r warning=FALSE, message=FALSE}
+kable(chetty_msa_long, digits=2) %>% 
+  kable_styling('striped')  %>%
+  scroll_box(width = "100%", height = "500px") 
+```
+
+#### Observed income-LE relationship
+
+```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=7}
+#labels
+xlabels <- c("12\n(10)", "35\n(30)", "60\n(50)", "92\n(70)", "156\n(90)")
+
+ggplot(subset(chetty_msa_long, hh_inc<215000), aes(x=hh_inc, y=le_raceadj, group=gnd, color=gnd, label=gnd, fill=gnd)) + 
+  facet_wrap(~czname) +
+  geom_line(arrow = arrow(length=unit(0.30,"cm"), ends="last", type = "open")) + 
+  geom_ribbon(aes(ymin=le_raceadj-1.96*sd_le_raceadj, ymax=le_raceadj+1.96*sd_le_raceadj), alpha=0.2, lty=0) +
+  geom_dl(method='smart.grid') +
+  scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
+  scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
+  ylab("Life expectancy") + 
+  xlab("Household income in thousands\n(Household income percentile)") +
+  scale_y_continuous(limits=c(71, 89), expand=expansion(mult=c(0.0,0.01))) +
+  scale_x_continuous(breaks=c(14000, 37000, 62000, 96000, 168000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0,0.025))) +
+  theme_light() +
+  theme(legend.position="none", strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"))
+```
+
+### EPI data on MW violations
+
+```{r warning=FALSE, message=FALSE}
+#######calculate prevalence separately by state, since gender composition of MW earners varies by state
+###michigan
+#data on wage theft by income and state, with state-level ratio of theft prevalence among women vs men 
+theft <- subset(read.csv(here('epi_data_states.csv'), fileEncoding="UTF-8-BOM"), state=="Michigan")
+
+#estimate prevalence of theft among women and men within each income category and state using simultaneous equations
+binded <- NULL
+for(i in 1:length(theft$gnd_ratio_state)){
+  fn <- function(x){
+    eq1 <- x[1]/x[2] - theft$gnd_ratio_state[i]
+    eq2 <- (0.466*x[1] + 0.534*x[2]) -  theft$prop_theft[i]
+    return(c(eq1, eq2))
+  }
+  binded <- rbind(binded, nleqslv(c(1,5), fn)$x)
+}
+
+mich <- rbind(data.frame(state=theft$state, hh_inc_cat=theft$hh_inc_cat, prop_theft=binded[,1], yr_theft=theft$yr_theft, gnd="Women"),
+               data.frame(state=theft$state, hh_inc_cat=theft$hh_inc_cat, prop_theft=binded[,2], yr_theft=theft$yr_theft, gnd="Men"))
+
+###new york
+#data on wage theft by income and state, with state-level ratio of theft prevalence among women vs men 
+theft <- subset(read.csv(here('epi_data_states.csv'), fileEncoding="UTF-8-BOM"), state=="New York")
+
+#estimate prevalence of theft among women and men within each income category and state using simultaneous equations
+binded <- NULL
+for(i in 1:length(theft$gnd_ratio_state)){
+  fn <- function(x){
+    eq1 <- x[1]/x[2] - theft$gnd_ratio_state[i]
+    eq2 <- (0.471*x[1] + 0.529*x[2]) -  theft$prop_theft[i]
+    return(c(eq1, eq2))
+  }
+  binded <- rbind(binded, nleqslv(c(1,5), fn)$x)
+}
+
+#stack states together
+rbind(mich, rbind(data.frame(state=theft$state, hh_inc_cat=theft$hh_inc_cat, prop_theft=binded[,1], yr_theft=theft$yr_theft, gnd="Women"),
+                        data.frame(state=theft$state, hh_inc_cat=theft$hh_inc_cat, prop_theft=binded[,2], yr_theft=theft$yr_theft, gnd="Men"))) %>%
+  mutate(hh_inc_cat=factor(hh_inc_cat, c("<10000", '10000-24999', '25000-39999', '40000-59999', '60000-99999', '100000-149999', '150000+'))) -> theft
+
+#print
+kable(theft %>% arrange(state, desc(gnd), hh_inc_cat), digits=2) %>% 
+  kable_styling("striped") %>%
+  scroll_box(width = "100%", height = "500px") 
+
+#merge the EPI and chetty data
+merge(chetty_msa_long, theft, c("hh_inc_cat", "gnd", "state")) -> chetty_msa_long
+```
+
+```{r warning=FALSE, message=FALSE}
+#scenario function
+int_func <- function(num, scenario){ #num is multiplier for EPI theft cost and prevalence estimates
+  
+  #seed
+  set.seed(4325)
+  
+  #create sample
+  chetty_msa_long_tot %>%
+    group_by(gnd, hh_inc_cat, czname) %>%
+    sample_frac(size=prop_theft*num, replace=F) %>%
+    mutate(hh_inc_rev=hh_inc + num*yr_theft) %>% #adjusted for inflation (Chetty in 2012 $, EPI estimates from 2013-2015, i.e., 2014 $?)
+    ungroup() %>% 
+    dplyr::select('id', 'hh_inc_rev') -> chetty_samps
+
+  #create hypothetical income variable
+  chetty_msa_long_tot %>%
+    left_join(chetty_samps, by='id') %>%
+    mutate(hh_inc=ifelse(!is.na(hh_inc_rev), hh_inc_rev, hh_inc)) %>%
+    dplyr::select(-hh_inc_rev) -> chetty_msa_long_tot_int
+  
+  #simulate LE using fitted model and hypothetical income 
+  int1 <- cbind(chetty_msa_long_tot_int, data.frame(sim_1=predict(fit, newdata = chetty_msa_long_tot_int, type="response")), data.frame(iter=i, type=scenario))
+}
+
+#knots at 10th, 50th, and 90th percentiles
+knots_3 <- as.numeric(quantile(chetty_msa_long$hh_inc, c(0.1, 0.5, 0.9)))
+
+#fit models to simmed Chetty data, allowing income-LE relationship to vary by gnd, czname, and cz*gender
+fit <- lm(le_raceadj ~ rcs(hh_inc, parms=knots_3)*gnd*czname, data=chetty_msa_long, w=count)
+
+#create expanded chetty_msa_long dataset that's size of average annual population
+data.frame(czname=rep(chetty_msa_long$czname, chetty_msa_long$count/50),
+           pctile=rep(chetty_msa_long$pctile, chetty_msa_long$count/50), 
+           hh_inc=rep(chetty_msa_long$hh_inc, chetty_msa_long$count/50),
+           hh_inc_cat=rep(chetty_msa_long$hh_inc_cat, chetty_msa_long$count/50),
+           prop_theft=rep(chetty_msa_long$prop_theft, chetty_msa_long$count/50),
+           yr_theft=rep(chetty_msa_long$yr_theft, chetty_msa_long$count/50),
+           gnd=rep(chetty_msa_long$gnd, chetty_msa_long$count/50),
+           sd=rep(chetty_msa_long$sd_le_raceadj, chetty_msa_long$count/50),
+           ACS_pop=rep(chetty_msa_long$ACS_pop, chetty_msa_long$count/50)) %>%
+  mutate(id=row_number()) -> chetty_msa_long_tot
+
+#predict LE using fitted model and observed income values in expanded Chetty data
+obs <- cbind(chetty_msa_long_tot, data.frame(sim_1=predict(fit, newdata = chetty_msa_long_tot, type="response")), data.frame(iter=i, type="Observed"))
+
+#predict LE under hypothetical scenarios
+int1 <- int_func(num=1, scenario="Scenario 1")
+int2 <- int_func(num=2, scenario="Scenario 2")
+int3 <- int_func(num=3, scenario="Scenario 3")
+
+#bind together
+binded <- rbind(obs, int1, int2, int3)
+```
+
+#### Estimated income-LE relationship under observed scenario
+
+```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=7}
+#remove duplicated rows since they're identical for each income level
+obs %>% 
+  filter(!duplicated(paste(gnd, pctile, czname))) -> obs_sub
+
+#labels
+xlabels <- c("12\n(10)", "35\n(30)", "60\n(50)", "92\n(70)", "156\n(90)")
+
+ggplot(subset(obs_sub, hh_inc<215000), aes(x=hh_inc, y=sim_1, group=gnd, color=gnd, label=gnd, fill=gnd)) + 
+  facet_wrap(~czname) +
+  geom_line(arrow = arrow(length=unit(0.30,"cm"), ends="last", type = "open")) + 
+  geom_ribbon(aes(ymin=sim_1 - 1.96 * sd, ymax=sim_1 + 1.96 * sd), alpha=0.2, lty=0) +
+  geom_dl(method='smart.grid') +
+  scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
+  scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
+  ylab("Life expectancy") + 
+  xlab("Household income in thousands\n(Household income percentile)") +
+  scale_y_continuous(limits=c(72.5, 89.5), expand=expansion(mult=c(0.0,0.01))) +
+  scale_x_continuous(breaks=c(14000, 37000, 62000, 96000, 168000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0,0.025))) +
+  theme_light() +
+  theme(legend.position="none", strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"))
+
+ggsave('appendix_4a.png', height=4, width=7, dpi=600)
+```
+
+#### Point estimates 
+
+```{r warning=FALSE, message=FALSE}
+#point estimates for difference in mean life expectancy across scenarios
+binded %>% 
+  group_by(type, gnd, czname) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd, czname) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (20 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(20))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(20))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(20))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(20))),
+         diff_pop=diff*ACS_pop,
+         diff_lower_pop=diff_lower*ACS_pop,
+         diff_upper_pop=diff_upper*ACS_pop) -> overall
+
+#point estimates for difference in mean life expectancy within affected group
+binded %>% 
+  filter(pctile<=4) %>%
+  group_by(type, gnd, czname) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd, czname) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (2 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(4))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(4))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(4))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(4))),
+         diff_pop=diff*ACS_pop*0.2,
+         diff_lower_pop=diff_lower*ACS_pop*0.2,
+         diff_upper_pop=diff_upper*ACS_pop*0.2) -> affected
+
+#point estimates for difference in mean life expectancy across scenarios within unaffected group
+binded %>% 
+  filter(pctile>16) %>%
+  group_by(type, gnd, czname) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  ungroup() %>%
+  group_by(gnd, czname) %>%
+  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (2 rows per gender)
+         meaned_lower=meaned-(1.96 * (sdd/sqrt(4))),
+         meaned_upper=meaned+(1.96 * (sdd/sqrt(4))),
+         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(4))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(4))),
+         diff_pop=diff*ACS_pop*0.2,
+         diff_lower_pop=diff_lower*ACS_pop*0.2,
+         diff_upper_pop=diff_upper*ACS_pop*0.2) -> unaffected
+
+#bind all together
+rbind(overall, affected, unaffected) %>%
+  dplyr::select('czname', 'gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
+  arrange(czname,desc(gnd)) -> binded_ests
+
+#print
+kable(binded_ests, digits=c(2,2,2,2,2,2,2,2,2,0,0,0),
+      col.names=c(" ", "Gender", "Scenario", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper")) %>%
+  kable_styling("striped") %>%
+  add_header_above(c(" "=3, "Mean LE"=3, "Diff in mean LE"=3, "Total years of LE extended"=3)) %>%
+  group_rows("Overall", 1, 4) %>%
+  group_rows("Lower HH income quintile", 5, 8) %>%
+  group_rows("Upper HH income quintile", 9, 12) %>%
+  group_rows("Overall", 13, 16) %>%
+  group_rows("Lower HH income quintile", 17, 20) %>%
+  group_rows("Upper HH income quintile", 21, 24) %>%
+  group_rows("Overall", 25, 28) %>%
+  group_rows("Lower HH income quintile", 29, 32) %>%
+  group_rows("Upper HH income quintile", 33, 36) %>%
+  group_rows("Overall", 37, 40) %>%
+  group_rows("Lower HH income quintile", 41, 44) %>%
+  group_rows("Upper HH income quintile", 45, 48)
+```
+
+#### Plots
+
+```{r warning=FALSE, message=FALSE, fig.height=6, fig.width=9}
+#difference in mean life expectancy across scenarios at each quintile
+binded %>% 
+  mutate(quintile=cut_interval(pctile, 5),
+         gnd=factor(gnd, levels=c("Women", "Men"))) %>%
+  group_by(gnd, quintile, type, czname) %>%
+  summarise(meaned=mean(sim_1),
+            sdd=mean(sd),
+            ACS_pop=mean(ACS_pop)) %>%
+  arrange(gnd, quintile, type) %>%
+  ungroup() %>%
+  group_by(gnd, quintile, czname) %>%
+  mutate(diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+         diff_lower=diff-(1.96 * (sdd/sqrt(4))),
+         diff_upper=diff+(1.96 * (sdd/sqrt(4))),
+         diff_pop=diff*ACS_pop*0.2,
+         diff_lower_pop=diff_lower*ACS_pop*0.2,
+         diff_upper_pop=diff_upper*ACS_pop*0.2) %>% 
+  filter(type!="Observed") %>%
+  dplyr::select('gnd', 'czname', 'type', 'quintile', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop", "ACS_pop") %>%
+  mutate(czname_gnd=paste(czname, ": ", gnd, sep="")) -> deciles
+
+#plot
+p1_women <- ggplot(subset(deciles, gnd=="Women"), aes(x=quintile, y=diff, group=type, color=type, fill=type)) + 
+  facet_grid(~czname_gnd) +
+  geom_hline(yintercept=0, lty=2, color="darkgrey") +
+  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
+  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  ylab("Difference in mean life expectancy") +
+  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
+  theme_light() +
+  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
+        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+
+p1_men <- ggplot(subset(deciles, gnd=="Men"), aes(x=quintile, y=diff, group=type, color=type, fill=type)) + 
+  facet_grid(~czname_gnd) +
+  geom_hline(yintercept=0, lty=2, color="darkgrey") +
+  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
+  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
+  theme_light() +
+  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
+        axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(),
+        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+
+p2_women <- ggplot(subset(deciles, gnd=="Women"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type)) + 
+  facet_grid(~czname_gnd) +
+  geom_hline(yintercept=0, lty=2, color="darkgrey") +
+  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
+  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  ylab("Years of life expectancy extended") +
+  xlab("Household income quintile") +
+  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
+  scale_x_discrete(labels=c("1","2","3","4","5")) +
+  theme_light() +
+  theme(strip.background.x=element_blank(), strip.text.x=element_blank(),
+        strip.background.y=element_rect(color="darkgrey", fill=NA), strip.text.y=element_text(color="black"))
+
+p2_men <- ggplot(subset(deciles, gnd=="Men"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type)) + 
+  facet_grid(~czname_gnd) +
+  geom_hline(yintercept=0, lty=2, color="darkgrey") +
+  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
+  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  xlab("Household income quintile") +
+  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
+  scale_x_discrete(labels=c("1","2","3","4","5")) +
+  theme_light() +
+  theme(strip.background.x=element_blank(), strip.text.x=element_blank(),
+        strip.background.y=element_rect(color="darkgrey", fill=NA), strip.text.y=element_text(color="black"),
+        axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank())
+
+p1_women + p1_men + p2_women + p2_men + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+
+ggsave('appendix_4b.png', height=6, width=9, dpi=600)
+```
+
+## Yearly life expectancy inequity in first versus tenth income deciles
+
+```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=5}
+chetty_annual %>%
+  mutate(d1_d10=ifelse(pctile<=10, "d1", 
+                      ifelse(pctile>90, "d10", "other"))) %>%
+  filter(d1_d10 != "other") %>%
+  group_by(year, d1_d10, gnd) %>%
+  summarise(meaned=weighted.mean(le_raceadj, w=count)) %>%
+  arrange(year, gnd, d1_d10) %>%
+  group_by(year, gnd) %>%
+  mutate(diff=meaned-lag(meaned)) %>%
+  filter(d1_d10=="d10") -> change_over_time
+
+#plot
+ggplot(change_over_time, aes(x=year, y=diff, group=gnd, color=gnd, label=gnd, fill=gnd)) + 
+  geom_line() + 
+  geom_dl(method='smart.grid') +
+  scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
+  scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
+  ylab("Life expectancy inequity") +
+  xlab("Year") +
+  scale_y_continuous(breaks=c(0, 3, 6, 9, 12), limits=c(0, 12.5), expand=expansion(mult=c(0.0,0.01))) +
+  scale_x_continuous(breaks=c(2001, 2005, 2009, 2013), expand=expansion(mult=c(0.0,0.0))) +
+  theme_light() +
+  theme(legend.position="none")
+
+ggsave("appendix_5.png", height=4, width=5, dpi=600)
+```
