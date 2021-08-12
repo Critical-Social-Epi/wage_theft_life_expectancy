@@ -1168,67 +1168,38 @@ ggplot(subset(obs_sub, hh_inc&lt;311000), aes(x=hh_inc, y=sim_1, group=gnd, colo
 </div>
 <div id="point-estimates" class="section level2" number="4.3">
 <h2 number="4.3"><span class="header-section-number">4.3</span> Point estimates</h2>
-<pre class="r"><code>#point estimates for difference in mean life expectancy across scenarios
-binded %&gt;% 
-  group_by(type, gnd) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (100 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(100))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(100))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(100))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(100))),
-         diff_pop=diff*ACS_pop,
-         diff_lower_pop=diff_lower*ACS_pop,
-         diff_upper_pop=diff_upper*ACS_pop) %&gt;% 
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;meaned&#39;, &#39;meaned_lower&#39;, &#39;meaned_upper&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) %&gt;%
-  arrange(desc(gnd), type) -&gt; overall
+<pre class="r"><code>#point estimates function
+point_ests &lt;- function(pctiled1, pctiled2, rooted, fractioned){
+  binded %&gt;% 
+    filter(pctile&lt;=pctiled1) %&gt;%
+    filter(pctile&gt;=pctiled2) %&gt;%
+    group_by(type, gnd) %&gt;%
+    summarise(meaned=mean(sim_1),
+              sdd=mean(sd),
+              ACS_pop=mean(ACS_pop)) %&gt;%
+    ungroup() %&gt;%
+    group_by(gnd) %&gt;%
+    mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (100 rows per gender in full sample; 10 rows per gender within deciles)
+           meaned_lower=meaned-(1.96 * (sdd/sqrt(rooted))),
+           meaned_upper=meaned+(1.96 * (sdd/sqrt(rooted))),
+           diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+           diff_lower=diff-(1.96 * (sdd/sqrt(rooted))),
+           diff_upper=diff+(1.96 * (sdd/sqrt(rooted))),
+           diff_pop=diff*ACS_pop*fractioned,
+           diff_lower_pop=diff_lower*ACS_pop*fractioned,
+           diff_upper_pop=diff_upper*ACS_pop*fractioned) %&gt;% 
+    dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;meaned&#39;, &#39;meaned_lower&#39;, &#39;meaned_upper&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) %&gt;%
+    arrange(desc(gnd), type)
+}
+
+#point estimates for difference in mean life expectancy across scenarios
+overall &lt;- point_ests(pctiled1=100, pctiled2=1, rooted=100, fractioned=1)
 
 #point estimates for difference in mean life expectancy across scenarios within affected group
-binded %&gt;% 
-  filter(pctile&lt;=10) %&gt;%
-  group_by(type, gnd) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
-         diff_pop=diff*ACS_pop*0.1,
-         diff_lower_pop=diff_lower*ACS_pop*0.1,
-         diff_upper_pop=diff_upper*ACS_pop*0.1) %&gt;% 
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;meaned&#39;, &#39;meaned_lower&#39;, &#39;meaned_upper&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) %&gt;%
-  arrange(desc(gnd), type) -&gt; affected
+affected &lt;- point_ests(pctiled1=10, pctiled2=1, rooted=10, fractioned=0.1)
 
 #point estimates for difference in mean life expectancy across scenarios within unaffected group
-binded %&gt;% 
-  filter(pctile&gt;90) %&gt;%
-  group_by(type, gnd) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
-         diff_pop=diff*ACS_pop*0.1,
-         diff_lower_pop=diff_lower*ACS_pop*0.1,
-         diff_upper_pop=diff_upper*ACS_pop*0.1) %&gt;% 
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;meaned&#39;, &#39;meaned_lower&#39;, &#39;meaned_upper&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) %&gt;%
-  arrange(desc(gnd), type) -&gt; unaffected
+unaffected &lt;- point_ests(pctiled1=100, pctiled2=91, rooted=10, fractioned=0.1)
 
 #print
 kable(rbind(overall, affected, unaffected), digits=c(2,2,2,2,2,2,2,2,0,0,0), 
@@ -2155,25 +2126,30 @@ Scenario 3
 </div>
 <div id="plots" class="section level2" number="4.4">
 <h2 number="4.4"><span class="header-section-number">4.4</span> Plots</h2>
-<pre class="r"><code>#difference in mean life expectancy across scenarios at each decile
-binded %&gt;% 
-  mutate(decile=cut_interval(pctile, 10),
-         gnd=factor(gnd, levels=c(&quot;Women&quot;, &quot;Men&quot;))) %&gt;%
-  group_by(gnd, decile, type) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  arrange(gnd, decile, type) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd, decile) %&gt;%
-  mutate(diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
-         diff_pop=diff*ACS_pop*0.1,
-         diff_lower_pop=diff_lower*ACS_pop*0.1,
-         diff_upper_pop=diff_upper*ACS_pop*0.1) %&gt;% 
-  filter(type!=&quot;Observed&quot;) %&gt;%
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;decile&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;, &quot;ACS_pop&quot;) -&gt; deciles
+<pre class="r"><code>#point estimates by decile function
+point_ests_plots &lt;- function(){
+  binded %&gt;% 
+    mutate(decile=cut_interval(pctile, 10),
+           gnd=factor(gnd, levels=c(&quot;Women&quot;, &quot;Men&quot;))) %&gt;%
+    group_by(gnd, decile, type) %&gt;%
+    summarise(meaned=mean(sim_1),
+              sdd=mean(sd),
+              ACS_pop=mean(ACS_pop)) %&gt;%
+    arrange(gnd, decile, type) %&gt;%
+    ungroup() %&gt;%
+    group_by(gnd, decile) %&gt;%
+    mutate(diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+           diff_lower=diff-(1.96 * (sdd/sqrt(10))),
+           diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+           diff_pop=diff*ACS_pop*0.1,
+           diff_lower_pop=diff_lower*ACS_pop*0.1,
+           diff_upper_pop=diff_upper*ACS_pop*0.1) %&gt;% 
+    filter(type!=&quot;Observed&quot;) %&gt;%
+    dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;decile&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;, &quot;ACS_pop&quot;)
+}
+
+#decile point estimates
+deciles &lt;- point_ests_plots()
 
 #plot diffs
 p1 &lt;- ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
@@ -2315,66 +2291,13 @@ ggplot(subset(obs_sub, hh_inc&lt;311000), aes(x=hh_inc, y=sim_1, group=gnd, colo
 <div id="point-estimates-1" class="section level3" number="5.1.2">
 <h3 number="5.1.2"><span class="header-section-number">5.1.2</span> Point estimates</h3>
 <pre class="r"><code>#point estimates for difference in mean life expectancy across scenarios
-binded %&gt;% 
-  group_by(type, gnd) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (100 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(100))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(100))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(100))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(100))),
-         diff_pop=diff*ACS_pop,
-         diff_lower_pop=diff_lower*ACS_pop,
-         diff_upper_pop=diff_upper*ACS_pop) %&gt;% 
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;meaned&#39;, &#39;meaned_lower&#39;, &#39;meaned_upper&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) %&gt;%
-  arrange(desc(gnd), type) -&gt; overall
+overall &lt;- point_ests(pctiled1=100, pctiled2=1, rooted=100, fractioned=1)
 
 #point estimates for difference in mean life expectancy across scenarios within affected group
-binded %&gt;% 
-  filter(pctile&lt;=10) %&gt;%
-  group_by(type, gnd) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
-         diff_pop=diff*ACS_pop*0.1,
-         diff_lower_pop=diff_lower*ACS_pop*0.1,
-         diff_upper_pop=diff_upper*ACS_pop*0.1) %&gt;% 
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;meaned&#39;, &#39;meaned_lower&#39;, &#39;meaned_upper&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) %&gt;%
-  arrange(desc(gnd), type) -&gt; affected
+affected &lt;- point_ests(pctiled1=10, pctiled2=1, rooted=10, fractioned=0.1)
 
 #point estimates for difference in mean life expectancy across scenarios within unaffected group
-binded %&gt;% 
-  filter(pctile&gt;90) %&gt;%
-  group_by(type, gnd) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
-         diff_pop=diff*ACS_pop*0.1,
-         diff_lower_pop=diff_lower*ACS_pop*0.1,
-         diff_upper_pop=diff_upper*ACS_pop*0.1) %&gt;% 
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;meaned&#39;, &#39;meaned_lower&#39;, &#39;meaned_upper&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) %&gt;%
-  arrange(desc(gnd), type) -&gt; unaffected
+unaffected &lt;- point_ests(pctiled1=100, pctiled2=91, rooted=10, fractioned=0.1)
 
 #print
 kable(rbind(overall, affected, unaffected), digits=c(2,2,2,2,2,2,2,2,0,0,0), 
@@ -3301,25 +3224,8 @@ Scenario 3
 </div>
 <div id="plots-1" class="section level3" number="5.1.3">
 <h3 number="5.1.3"><span class="header-section-number">5.1.3</span> Plots</h3>
-<pre class="r"><code>#difference in mean life expectancy across scenarios at each decile
-binded %&gt;% 
-  mutate(decile=cut_interval(pctile, 10),
-         gnd=factor(gnd, levels=c(&quot;Women&quot;, &quot;Men&quot;))) %&gt;%
-  group_by(gnd, decile, type) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  arrange(gnd, decile, type) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd, decile) %&gt;%
-  mutate(diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
-         diff_pop=diff*ACS_pop*0.1,
-         diff_lower_pop=diff_lower*ACS_pop*0.1,
-         diff_upper_pop=diff_upper*ACS_pop*0.1) %&gt;% 
-  filter(type!=&quot;Observed&quot;) %&gt;%
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;decile&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) -&gt; deciles
+<pre class="r"><code>#decile point estimates
+deciles &lt;- point_ests_plots()
 
 #plot diffs
 p1 &lt;- ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
@@ -3436,66 +3342,13 @@ binded &lt;- rbind(obs, int1, int2, int3, int4, int5, int6)</code></pre>
 <div id="point-estimates-2" class="section level2" number="5.3">
 <h2 number="5.3"><span class="header-section-number">5.3</span> Point estimates</h2>
 <pre class="r"><code>#point estimates for difference in mean life expectancy across scenarios
-binded %&gt;% 
-  group_by(type, gnd) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (100 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(100))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(100))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(100))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(100))),
-         diff_pop=diff*ACS_pop,
-         diff_lower_pop=diff_lower*ACS_pop,
-         diff_upper_pop=diff_upper*ACS_pop) %&gt;% 
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;meaned&#39;, &#39;meaned_lower&#39;, &#39;meaned_upper&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) %&gt;%
-  arrange(desc(gnd), type) -&gt; overall
+overall &lt;- point_ests(pctiled1=100, pctiled2=1, rooted=100, fractioned=1)
 
 #point estimates for difference in mean life expectancy across scenarios within affected group
-binded %&gt;% 
-  filter(pctile&lt;=10) %&gt;%
-  group_by(type, gnd) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
-         diff_pop=diff*ACS_pop*0.1,
-         diff_lower_pop=diff_lower*ACS_pop*0.1,
-         diff_upper_pop=diff_upper*ACS_pop*0.1) %&gt;% 
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;meaned&#39;, &#39;meaned_lower&#39;, &#39;meaned_upper&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) %&gt;%
-  arrange(desc(gnd), type) -&gt; affected
+affected &lt;- point_ests(pctiled1=10, pctiled2=1, rooted=10, fractioned=0.1)
 
 #point estimates for difference in mean life expectancy across scenarios within unaffected group
-binded %&gt;% 
-  filter(pctile&gt;90) %&gt;%
-  group_by(type, gnd) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (10 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(10))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(10))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
-         diff_pop=diff*ACS_pop*0.1,
-         diff_lower_pop=diff_lower*ACS_pop*0.1,
-         diff_upper_pop=diff_upper*ACS_pop*0.1) %&gt;% 
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;meaned&#39;, &#39;meaned_lower&#39;, &#39;meaned_upper&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) %&gt;%
-  arrange(desc(gnd), type) -&gt; unaffected
+unaffected &lt;- point_ests(pctiled1=100, pctiled2=91, rooted=10, fractioned=0.1)
 
 #print
 kable(rbind(overall, affected, unaffected), digits=c(2,2,2,2,2,2,2,2,0,0,0), 
@@ -5052,25 +4905,8 @@ Scenario 3: 2/2
 </div>
 <div id="plots-2" class="section level2" number="5.4">
 <h2 number="5.4"><span class="header-section-number">5.4</span> Plots</h2>
-<pre class="r"><code>#difference in mean life expectancy across scenarios at each decile
-binded %&gt;% 
-  mutate(decile=cut_interval(pctile, 10),
-         gnd=factor(gnd, levels=c(&quot;Women&quot;, &quot;Men&quot;))) %&gt;%
-  group_by(gnd, decile, type) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  arrange(gnd, decile, type) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd, decile) %&gt;%
-  mutate(diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(10))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(10))),
-         diff_pop=diff*ACS_pop*0.1,
-         diff_lower_pop=diff_lower*ACS_pop*0.1,
-         diff_upper_pop=diff_upper*ACS_pop*0.1) %&gt;% 
-  filter(type!=&quot;Observed&quot;) %&gt;%
-  dplyr::select(&#39;gnd&#39;, &#39;type&#39;, &#39;decile&#39;, &#39;diff&#39;, &#39;diff_lower&#39;, &quot;diff_upper&quot;, &#39;diff_pop&#39;, &#39;diff_lower_pop&#39;, &quot;diff_upper_pop&quot;) -&gt; deciles
+<pre class="r"><code>#decile point estimates
+deciles &lt;- point_ests_plots()
 
 #plot diffs
 p1 &lt;- ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
@@ -8411,61 +8247,36 @@ ggplot(subset(obs_sub, hh_inc&lt;215000), aes(x=hh_inc, y=sim_1, group=gnd, colo
 </div>
 <div id="point-estimates-3" class="section level4" number="5.5.2.2">
 <h4 number="5.5.2.2"><span class="header-section-number">5.5.2.2</span> Point estimates</h4>
-<pre class="r"><code>#point estimates for difference in mean life expectancy across scenarios
-binded %&gt;% 
-  group_by(type, gnd, czname) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd, czname) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (20 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(20))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(20))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(20))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(20))),
-         diff_pop=diff*ACS_pop,
-         diff_lower_pop=diff_lower*ACS_pop,
-         diff_upper_pop=diff_upper*ACS_pop) -&gt; overall
+<pre class="r"><code>#point estimates function
+point_ests_cz &lt;- function(pctiled1, pctiled2, rooted, fractioned){
+  binded %&gt;% 
+    filter(pctile&lt;=pctiled1) %&gt;%
+    filter(pctile&gt;=pctiled2) %&gt;%
+    group_by(type, gnd, czname) %&gt;%
+    summarise(meaned=mean(sim_1),
+              sdd=mean(sd),
+              ACS_pop=mean(ACS_pop)) %&gt;%
+    ungroup() %&gt;%
+    group_by(gnd, czname) %&gt;%
+    mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (100 rows per gender in full sample; 10 rows per gender within deciles)
+           meaned_lower=meaned-(1.96 * (sdd/sqrt(rooted))),
+           meaned_upper=meaned+(1.96 * (sdd/sqrt(rooted))),
+           diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
+           diff_lower=diff-(1.96 * (sdd/sqrt(rooted))),
+           diff_upper=diff+(1.96 * (sdd/sqrt(rooted))),
+           diff_pop=diff*ACS_pop*fractioned,
+           diff_lower_pop=diff_lower*ACS_pop*fractioned,
+           diff_upper_pop=diff_upper*ACS_pop*fractioned)
+}
 
-#point estimates for difference in mean life expectancy within affected group
-binded %&gt;% 
-  filter(pctile&lt;=4) %&gt;%
-  group_by(type, gnd, czname) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd, czname) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (2 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(4))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(4))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(4))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(4))),
-         diff_pop=diff*ACS_pop*0.2,
-         diff_lower_pop=diff_lower*ACS_pop*0.2,
-         diff_upper_pop=diff_upper*ACS_pop*0.2) -&gt; affected
+#point estimates for difference in mean life expectancy across scenarios
+overall &lt;- point_ests_cz(pctiled1=100, pctiled2=1, rooted=20, fractioned=1)
+
+#point estimates for difference in mean life expectancy across scenarios within affected group
+affected &lt;- point_ests_cz(pctiled1=4, pctiled2=1, rooted=4, fractioned=0.2)
 
 #point estimates for difference in mean life expectancy across scenarios within unaffected group
-binded %&gt;% 
-  filter(pctile&gt;16) %&gt;%
-  group_by(type, gnd, czname) %&gt;%
-  summarise(meaned=mean(sim_1),
-            sdd=mean(sd),
-            ACS_pop=mean(ACS_pop)) %&gt;%
-  ungroup() %&gt;%
-  group_by(gnd, czname) %&gt;%
-  mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (2 rows per gender)
-         meaned_lower=meaned-(1.96 * (sdd/sqrt(4))),
-         meaned_upper=meaned+(1.96 * (sdd/sqrt(4))),
-         diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(4))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(4))),
-         diff_pop=diff*ACS_pop*0.2,
-         diff_lower_pop=diff_lower*ACS_pop*0.2,
-         diff_upper_pop=diff_upper*ACS_pop*0.2) -&gt; unaffected
+unaffected &lt;- point_ests_cz(pctiled1=20, pctiled2=17, rooted=4, fractioned=0.2)
 
 #bind all together
 rbind(overall, affected, unaffected) %&gt;%
