@@ -16,8 +16,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 TO DO: 
 
--make sure SEs make sense
--figure out inflation
++ make sure SEs make sense
++ figure out inflation
++ is it fine to pool together life expectancy estimates (e.g., mean within a decile is pooled mean of percentiles)?
 
 # Overview of primary analyses
 
@@ -523,7 +524,7 @@ p2 <- ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=typ
 
 p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
-ggsave('appendix_1b.png', height=6, width=8.5, dpi=600)
+ggsave('appendix_1c.png', height=6, width=8.5, dpi=600)
 ```
 
 ### Income-life-expectancy relationship by year
@@ -669,7 +670,7 @@ p2 <- ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=typ
 
 p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
-ggsave('appendix_3.png', height=6.25, width=12, dpi=600)
+ggsave('appendix_3b.png', height=6.25, width=12, dpi=600)
 ```
 
 ## City-specific estimates
@@ -1029,10 +1030,10 @@ p2_men <- ggplot(subset(deciles, gnd=="Men"), aes(x=quintile, y=diff_pop, group=
 
 p1_women + p1_men + p2_women + p2_men + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
-ggsave('appendix_4b.png', height=6, width=9, dpi=600)
+ggsave('appendix_4c.png', height=6, width=9, dpi=600)
 ```
 
-## Yearly life expectancy inequity in first versus tenth income deciles
+## Life expectancy inequity in tenth versus first income deciles by year
 
 ```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=5}
 chetty_annual %>%
