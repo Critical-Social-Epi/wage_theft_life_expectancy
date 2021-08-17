@@ -14,11 +14,10 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-TO DO: 
+**To-do:** 
 
-+ make sure SEs make sense
-+ figure out inflation
-+ is it fine to pool together life expectancy estimates (e.g., mean within a decile is pooled mean of percentiles)?
+* Make sure SEs make sense
+* Figure out inflation
 
 # Overview of primary analyses
 
