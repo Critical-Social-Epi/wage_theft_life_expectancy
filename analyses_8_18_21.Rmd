@@ -49,6 +49,7 @@ library(stringr)
 library(ggpubr)
 library(nleqslv)
 library(data.table)
+options(scipen=100000) #prevent scientific notation in plots
 
 #load chetty data
 chetty <- read.csv(here('health_ineq_online_table_1.csv'))
@@ -261,12 +262,12 @@ point_ests <- function(pctiled1, pctiled2, rooted, fractioned){
               ACS_pop=mean(ACS_pop)) %>%
     ungroup() %>%
     group_by(gnd) %>%
-    mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (100 rows per gender in full sample; 10 rows per gender within deciles)
+    mutate(meaned=meaned, #SE for mean LE is mean SE divided by sqrt of number of SE estimates [mean(SE)/sqrt(number of SE estimates, e.g., 100 in full sample; 10 w/in deciles)] 
            meaned_lower=meaned-(1.96 * (sdd/sqrt(rooted))),
            meaned_upper=meaned+(1.96 * (sdd/sqrt(rooted))),
-           diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-           diff_lower=diff-(1.96 * (sdd/sqrt(rooted))),
-           diff_upper=diff+(1.96 * (sdd/sqrt(rooted))),
+           diff=meaned-first(meaned), #SE for difference in mean LE is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
+           diff_lower=diff-(1.96 * (sqrt(2)*(sdd/sqrt(rooted)))),
+           diff_upper=diff+(1.96 * (sqrt(2)*(sdd/sqrt(rooted)))),
            diff_pop=diff*ACS_pop*fractioned,
            diff_lower_pop=diff_lower*ACS_pop*fractioned,
            diff_upper_pop=diff_upper*ACS_pop*fractioned) %>% 
@@ -308,9 +309,9 @@ point_ests_plots <- function(){
     arrange(gnd, decile, type) %>%
     ungroup() %>%
     group_by(gnd, decile) %>%
-    mutate(diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-           diff_lower=diff-(1.96 * (sdd/sqrt(10))),
-           diff_upper=diff+(1.96 * (sdd/sqrt(10))),
+    mutate(diff=meaned-first(meaned), #SE for difference in mean LE is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
+           diff_lower=diff-(1.96 * (sqrt(2)*(sdd/sqrt(10)))),
+           diff_upper=diff+(1.96 * (sqrt(2)*(sdd/sqrt(10)))),
            diff_pop=diff*ACS_pop*0.1,
            diff_lower_pop=diff_lower*ACS_pop*0.1,
            diff_upper_pop=diff_upper*ACS_pop*0.1) %>% 
@@ -906,12 +907,12 @@ point_ests_cz <- function(pctiled1, pctiled2, rooted, fractioned){
               ACS_pop=mean(ACS_pop)) %>%
     ungroup() %>%
     group_by(gnd, czname) %>%
-    mutate(meaned=meaned, #mean LE in each scenario; pooled SE is pctile SE divided by sqrt of sample size (100 rows per gender in full sample; 10 rows per gender within deciles)
+    mutate(meaned=meaned, #SE for mean LE is mean SE divided by sqrt of number of SE estimates [mean(SE)/sqrt(number of SE estimates, e.g., 100 in full sample; 10 w/in deciles)] 
            meaned_lower=meaned-(1.96 * (sdd/sqrt(rooted))),
            meaned_upper=meaned+(1.96 * (sdd/sqrt(rooted))),
-           diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-           diff_lower=diff-(1.96 * (sdd/sqrt(rooted))),
-           diff_upper=diff+(1.96 * (sdd/sqrt(rooted))),
+           diff=meaned-first(meaned), #SE for difference in mean LE is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
+           diff_lower=diff-(1.96 * (sqrt(2)*(sdd/sqrt(rooted)))),
+           diff_upper=diff+(1.96 * (sqrt(2)*(sdd/sqrt(rooted)))),
            diff_pop=diff*ACS_pop*fractioned,
            diff_lower_pop=diff_lower*ACS_pop*fractioned,
            diff_upper_pop=diff_upper*ACS_pop*fractioned)
@@ -964,9 +965,9 @@ binded %>%
   arrange(gnd, quintile, type) %>%
   ungroup() %>%
   group_by(gnd, quintile, czname) %>%
-  mutate(diff=meaned-first(meaned), #diff in mean LE across scenarios; first is observed LE (alphabetical order); pooled SE for diff is same as above
-         diff_lower=diff-(1.96 * (sdd/sqrt(4))),
-         diff_upper=diff+(1.96 * (sdd/sqrt(4))),
+  mutate(diff=meaned-first(meaned),  #SE for difference in mean LE is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
+         diff_lower=diff-(1.96 * (sqrt(2)*sdd/sqrt(4))),
+         diff_upper=diff+(1.96 * (sqrt(2)*sdd/sqrt(4))),
          diff_pop=diff*ACS_pop*0.2,
          diff_lower_pop=diff_lower*ACS_pop*0.2,
          diff_upper_pop=diff_upper*ACS_pop*0.2) %>% 
