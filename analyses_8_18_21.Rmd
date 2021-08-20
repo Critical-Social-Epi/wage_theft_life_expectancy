@@ -14,18 +14,19 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-**To-do:** 
-
-* Make sure SEs make sense
-* Figure out inflation
-
 # Overview of primary analyses
 
 ## Data and methods
 
 We based these simulations on 2001-2014 household (HH) income and life expectancy (LE) data from Chetty et al.'s 2016 JAMA paper (https://healthinequality.org/) and EPI's 2017 report on MW violations (https://www.epi.org/publication/employers-steal-billions-from-workers-paychecks-each-year/). First, we fitted an OLS model to Chetty’s pooled 2001-2014 data (200 rows, one for each gender-income percentile), with race-adjusted LE as the dependent variable and a gender * HH income interaction term as the independent variable (with HH income specified as a 7-knot restricted cubic spline), weighted by the frequency counts in the Chetty data. Second, we created a large simulated population (1.4mm - 1/1000th the size of the underlying Chetty sample), with HH income as observed in the Chetty data, counts of respondents at each HH income level and gender stratum as observed in the Chetty data, and LE in each stratum as predicted by the linear model. We also estimated LE in a hypothetical population in which wage theft were eliminated. To do so, we used the same approach, but at each HH income level, we created a hypothetical income variable that added back in workers' stolen wages, and used that hypothetical income variable to predict LE for each respondent in the population. We evaluated three scenarios regarding the prevalence and cost of wage theft for each gender and income stratum: 1) wage theft as common and costly as in the EPI data, 2) wage theft 2x as common and costly as in the EPI data, and 3) wage theft 3x as common and costly as in the EPI data. We then contrasted LE in the observed vs hypothetical scenarios overall and within income deciles for each gender. 
 
-To calculate the SE for our overall mean LE estimate for each gender under each scenario, I took the mean of the SEs provided by Chetty et al. for LE expectancy at each percentile of the income distribution and divided it by the square root of the number of LE estimates (100) [i.e., SE for population LE=mean(SE across income percentiles)/sqrt(100)]. I used a similar procedure to calculate SEs for the mean LE estimates within income deciles, but divided the mean SE within income deciles by the square root of 10 instead of by the square root of 100 [e.g., SE for LE in income decile 1=mean(SE within income decile 1)/sqrt(10)]. I assumed these SEs also applied to our estimates regarding the difference in mean LE across scenarios [i.e., SE for difference in population LE in observed data versus in scenario 1=mean(SE across income percentiles)/sqrt(100)].  
+We estimated standard errors (SEs) for our overall mean life expectancy estimates for a given gender under a given scenario as follows:
+<br />
+<center> SE~Scenario~=[weighted mean(SE~Chetty~)]/√n </center>
+<br />
+where the weighted mean is weighted by the frequency counts provided by Chetty et al., SE~Chetty~ is the vector of SEs provided by Chetty et al. for life  expectancy at each income percentile for a given gender, and n is the length of the vector. Meanwhile, we estimated SEs for our estimates regarding the difference in mean life expectancy across scenarios (e.g., scenario 1 versus observed scenario) as follows:
+<br />  
+<center> SE~Difference~=√(SE~Scenario1~^2 + SE~ObservedScenario~^2) </center>
 
 ## Key assumptions regarding wage-theft-LE relationship 
 
@@ -57,7 +58,7 @@ chetty <- read.csv(here('health_ineq_online_table_1.csv'))
 #fix and recode some vars
 chetty %>%
   mutate(gnd=factor(ifelse(gnd=="M", "Men", "Women"), levels=c("Women", "Men")),
-         hh_inc=hh_inc*(352.6/337.3), #adjust Chetty estimates to 2016 dollars from 2012 dollars using CPI-U-RS (Chetty estimates in 2012 dollars, EPI estimates in 2016??)
+         hh_inc=hh_inc*(352.6/337.3), #adjust Chetty estimates to 2016 dollars from 2012 dollars using CPI-U-RS to match EPI estimates (352.6 is the CPI-U-RS value used by EPI - it's been updated very slightly since then)
          hh_inc_cat=ifelse(hh_inc<10000, "<10000",
                            ifelse(hh_inc>=10000 & hh_inc<25000, "10000-24999",
                                   ifelse(hh_inc>=25000 & hh_inc<40000, "25000-39999",
@@ -209,8 +210,9 @@ binded %>%
   left_join(binded, 'type') -> binded
 
 #plot
-ggplot(subset(binded, pctile<=50), aes(x=hh_inc/1000, color=type, group=type)) +
-  geom_density() +
+ggplot(subset(binded, pctile<=50), aes(x=hh_inc/1000)) +
+  geom_density(aes(color=type, group=type)) +
+  geom_text(aes(x=46, y=0.01, label="Mean below median")) +
   geom_vline(aes(xintercept=mean_hh_inc/1000, group=type, color=type), lty=2) +
   xlab("Household income in thousands") +
   ylab("Density") +
@@ -319,35 +321,43 @@ point_ests_plots <- function(){
     dplyr::select('gnd', 'type', 'decile', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop", "ACS_pop")
 }
 
+#plot point estimates by decile function
+plot_deciles_est <- function(vals=c("#6A3D9A", "#33A02C", "#FF7F00"), fattened=3, widthed=0.8){
+  ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
+    facet_wrap(~gnd) +
+    geom_hline(yintercept=0, lty=2, color="darkgrey") +
+    geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=fattened, position=position_dodge(width=widthed)) +  
+    scale_color_manual(values=vals) +
+    scale_fill_manual(values=vals) +
+    ylab("Difference in mean life expectancy") +
+    scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
+    theme_light() +
+    theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
+          axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+}
+
+#plot total years extended by decile function
+plot_deciles_tot <- function(vals=c("#6A3D9A", "#33A02C", "#FF7F00"), fattened=3, widthed=0.8){
+  ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=type)) + 
+    facet_wrap(~gnd) +
+    geom_hline(yintercept=0, lty=2, color="darkgrey") +
+    geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=fattened, position=position_dodge(width=widthed)) + 
+    scale_color_manual(values=vals) +
+    scale_fill_manual(values=vals) +
+    ylab("Years of life expectancy extended") +
+    xlab("Household income decile") +
+    scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
+    scale_x_discrete(labels=c('1', "2", "3", "4", "5", "6", "7", "8", "9", "10")) +
+    theme_light() +
+    theme(strip.background=element_blank(), strip.text=element_blank())
+}
+
 #decile point estimates
 deciles <- point_ests_plots()
 
-#plot diffs
-p1 <- ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
-  facet_wrap(~gnd) +
-  geom_hline(yintercept=0, lty=2, color="darkgrey") +
-  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=3, position=position_dodge(width=0.8)) + 
-  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
-  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
-  ylab("Difference in mean life expectancy") +
-  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
-  theme_light() +
-  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
-        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
-
-#plot years extended
-p2 <- ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=type)) + 
-  facet_wrap(~gnd) +
-  geom_hline(yintercept=0, lty=2, color="darkgrey") +
-  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=3, position=position_dodge(width=0.8)) + 
-  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
-  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
-  ylab("Years of life expectancy extended") +
-  xlab("Household income decile") +
-  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
-  scale_x_discrete(labels=c('1', "2", "3", "4", "5", "6", "7", "8", "9", "10")) +
-  theme_light() +
-  theme(strip.background=element_blank(), strip.text=element_blank())
+#plot
+p1 <- plot_deciles_est()
+p2 <- plot_deciles_tot()
 
 p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
@@ -495,32 +505,9 @@ kable(rbind(overall, affected, unaffected), digits=c(2,2,2,2,2,2,2,2,0,0,0),
 #decile point estimates
 deciles <- point_ests_plots()
 
-#plot diffs
-p1 <- ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
-  facet_wrap(~gnd) +
-  geom_hline(yintercept=0, lty=2, color="darkgrey") +
-  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=3, position=position_dodge(width=0.8)) + 
-  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
-  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
-  ylab("Difference in mean life expectancy") +
-  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
-  theme_light() +
-  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
-        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
-
-#plot years extended
-p2 <- ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=type)) + 
-  facet_wrap(~gnd) + 
-  geom_hline(yintercept=0, lty=2, color="darkgrey") +
-  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=3, position=position_dodge(width=0.8)) + 
-  scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
-  scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
-  ylab("Years of life expectancy extended") +
-  xlab("Household income decile") +
-  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
-  scale_x_discrete(labels=c('1', "2", "3", "4", "5", "6", "7", "8", "9", "10")) +
-  theme_light() +
-  theme(strip.background=element_blank(), strip.text=element_blank())
+#plot
+p1 <- plot_deciles_est()
+p2 <- plot_deciles_tot()
 
 p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
@@ -641,32 +628,9 @@ kable(rbind(overall, affected, unaffected), digits=c(2,2,2,2,2,2,2,2,0,0,0),
 #decile point estimates
 deciles <- point_ests_plots()
 
-#plot diffs
-p1 <- ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
-  facet_wrap(~gnd) +
-  geom_hline(yintercept=0, lty=2, color="darkgrey") +
-  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=2, position=position_dodge(width=1.0)) + 
-  scale_color_manual(values=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00")) +
-  scale_fill_manual(values=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00")) +
-  ylab("Difference in mean life expectancy") +
-  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
-  theme_light() +
-  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
-        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
-
-#plot years extended
-p2 <- ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=type)) + 
-  facet_wrap(~gnd) + 
-  geom_hline(yintercept=0, lty=2, color="darkgrey") +
-  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=2, position=position_dodge(width=1.0)) + 
-  scale_color_manual(values=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00")) +
-  scale_fill_manual(values=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00")) +
-  ylab("Years of life expectancy extended") +
-  xlab("Household income decile") +
-  scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
-  scale_x_discrete(labels=c('1', "2", "3", "4", "5", "6", "7", "8", "9", "10")) +
-  theme_light() +
-  theme(strip.background=element_blank(), strip.text=element_blank())
+#plot
+p1 <- plot_deciles_est(vals=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00"), fattened=2, widthed=1.0)
+p2 <- plot_deciles_tot(vals=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00"), fattened=2, widthed=1.0)
 
 p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
@@ -674,8 +638,6 @@ ggsave('appendix_3b.png', height=6.25, width=12, dpi=600)
 ```
 
 ## City-specific estimates
-
-Analyzed Detroit and NYC as examples of disparate effects of scenarios geographically.
 
 ```{r,  warning=FALSE, message=FALSE}
 #load national and msa-level chetty data
