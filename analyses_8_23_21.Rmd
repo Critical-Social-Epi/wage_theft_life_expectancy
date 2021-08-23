@@ -14,11 +14,13 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+REMOVE GROUP QUARTERS FROM ACS??? ONLY IN SAMPLE 2006-ON, ACS RECOMMENDS REMOVING THEM. SEE HOW MANY THERE ARE
+
 # Overview of primary analyses
 
 ## Data and methods
 
-We based these simulations on 2001-2014 household (HH) income and life expectancy (LE) data from Chetty et al.'s 2016 JAMA paper (https://healthinequality.org/) and EPI's 2017 report on MW violations (https://www.epi.org/publication/employers-steal-billions-from-workers-paychecks-each-year/). First, we fitted an OLS model to Chetty’s pooled 2001-2014 data (200 rows, one for each gender-income percentile), with race-adjusted LE as the dependent variable and a gender * HH income interaction term as the independent variable (with HH income specified as a 7-knot restricted cubic spline), weighted by the frequency counts in the Chetty data. Second, we created a large simulated population (1.4mm - 1/1000th the size of the underlying Chetty sample), with HH income as observed in the Chetty data, counts of respondents at each HH income level and gender stratum as observed in the Chetty data, and LE in each stratum as predicted by the linear model. We also estimated LE in a hypothetical population in which wage theft were eliminated. To do so, we used the same approach, but at each HH income level, we created a hypothetical income variable that added back in workers' stolen wages, and used that hypothetical income variable to predict LE for each respondent in the population. We evaluated three scenarios regarding the prevalence and cost of wage theft for each gender and income stratum: 1) wage theft as common and costly as in the EPI data, 2) wage theft 2x as common and costly as in the EPI data, and 3) wage theft 3x as common and costly as in the EPI data. We then contrasted LE in the observed vs hypothetical scenarios overall and within income deciles for each gender. 
+We based these simulations on 2001-2014 household (HH) income and life expectancy (LE) data from Chetty et al.'s 2016 JAMA paper (https://healthinequality.org/) and EPI's 2017 report on MW violations (https://www.epi.org/publication/employers-steal-billions-from-workers-paychecks-each-year/). First, we fitted an OLS model to Chetty’s pooled 2001-2014 data (200 rows, one for each gender-income percentile), with race-adjusted LE as the dependent variable and a gender * HH income interaction term as the independent variable (with HH income specified as a 7-knot restricted cubic spline), weighted by the frequency counts in the Chetty data. Second, we created a large simulated population (1.4mm - 1/1000th the size of the underlying Chetty sample), with HH income as observed in the Chetty data, counts of respondents at each HH income level and gender stratum as observed in the Chetty data, and LE in each stratum as predicted by the linear model. We also estimated LE in a hypothetical population in which wage theft were eliminated. To do so, we used the same approach, but at each HH income level, we created a hypothetical income variable that added back in workers' stolen wages, and used that hypothetical income variable to predict LE for each respondent in the population. We then contrasted mean LE in the observed and counterfactual scenarios overall and within income percentiles. We also multiplied these mean differences by the total age-40 U.S. population in a given stratum from 2001-2014 to estimate the total years of LE extended by our counterfactual scenarios among 40-year-olds in 2014. We evaluated three scenarios regarding the prevalence and cost of wage theft for each gender and income stratum: 1) wage theft as common and costly as in the EPI data, 2) wage theft 2x as common and costly as in the EPI data, and 3) wage theft 3x as common and costly as in the EPI data. We then contrasted LE in the observed vs hypothetical scenarios overall and within income deciles for each gender. 
 
 We estimated standard errors (SEs) for our overall mean life expectancy estimates for a given gender under a given scenario as follows:
 <br />
@@ -67,13 +69,13 @@ chetty %>%
                                                        ifelse(hh_inc>=100000 & hh_inc<150000, "100000-149999",
                                                               ifelse(hh_inc>=150000, "150000+", "del")))))))) -> chetty
 
-#merge in ACS data on population counts in 2014; don't need to adjust for inflation since only need to exclude those with $0 incomes
-fread(here("ACS_IPUMS.csv")) %>%
-  filter(FTOTINC>0 & AGE==40) %>% #family income yields similar estimates to household income, but I assume "family income" is a bit closer to Chetty's definition since joint tax filers are likely to be related
+#merge in ACS data on population counts from 2001-2014; restrict to those with non-zero incomes, age 40, and not living in group quarters (per IPUMS recommendation)
+fread(here("ACS_IPUMS_2001_2014.csv")) %>%
+  filter(FTOTINC>0 & AGE==40 & (GQ==1 | GQ==2)) %>% #family income yields similar estimates to household income, but I assume "family income" is a bit closer to Chetty's definition since joint tax filers are likely to be related
   mutate(gnd=ifelse(SEX==1, "Men", "Women")) %>%
   group_by(gnd) %>%
   summarise(ACS_pop=sum(PERWT)) %>%
-  right_join(chetty, by="gnd") -> chetty #~2.05-2.1 million of each gender
+  right_join(chetty, by="gnd") -> chetty #30-31 million of each gender
 ```
 
 # Chetty data 
@@ -203,14 +205,16 @@ binded <- rbind(obs, int1, int2, int3)
 
 ```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=6}
 #estimate mean income in each scenario in bottom half of income distribution
+#don't need to sample everyone for geom_density, and not doing so speeds things up a bunch
 binded %>%
   filter(pctile<=50) %>%
   group_by(type) %>%
   summarise(mean_hh_inc=mean(hh_inc)) %>%
-  left_join(binded, 'type') -> binded
+  left_join(binded, 'type') %>%
+  sample_frac(0.05, replace=F) -> binded_sub
 
 #plot
-ggplot(subset(binded, pctile<=50), aes(x=hh_inc/1000)) +
+ggplot(subset(binded_sub, pctile<=50), aes(x=hh_inc/1000)) +
   geom_density(aes(color=type, group=type)) +
   geom_text(aes(x=46, y=0.01, label="Mean below median")) +
   geom_vline(aes(xintercept=mean_hh_inc/1000, group=type, color=type), lty=2) +
@@ -384,9 +388,9 @@ read.csv(here('health_ineq_online_table_2.csv')) %>%
                                                        ifelse(hh_inc>=100000 & hh_inc<150000, "100000-149999",
                                                               ifelse(hh_inc>=150000, "150000+", "del")))))))) -> chetty_2014
 
-#merge in ACS data on population counts in 2014; don't need to adjust for inflation since only need to exclude those with $0 incomes
-fread(here("ACS_IPUMS.csv")) %>%
-  filter(FTOTINC>0 & AGE==40) %>% #family income yields similar estimates to household income, but I assume "family income" is a bit closer to Chetty's definition since joint tax filers are likely to be related
+#merge in ACS data on population counts in 2014; restrict to those with non-zero incomes, age 40, and not living in group quarters (per IPUMS recommendation)
+fread(here("ACS_IPUMS_2001_2014.csv")) %>%
+  filter(FTOTINC>0 & AGE==40 & YEAR==2014 & (GQ==1 | GQ==2)) %>% #family income yields similar estimates to household income, but I assume "family income" is a bit closer to Chetty's definition since joint tax filers are likely to be related
   mutate(gnd=ifelse(SEX==1, "Men", "Women")) %>%
   group_by(gnd) %>%
   summarise(ACS_pop=sum(PERWT)) %>%
@@ -681,13 +685,13 @@ chetty_msa_long %>%
          state=ifelse(czname=="Detroit", "Michigan", "New York")) %>%
   arrange(czname, pctile, gnd) -> chetty_msa_long
 
-#merge in ACS data on population counts; don't need to adjust for inflation since only need to exclude those with $0 incomes
-fread(here("ACS_IPUMS.csv")) %>%
-  filter(FTOTINC>0 & AGE==40 & (MET2013==19820 | MET2013==35620)) %>% 
+#merge in ACS data on population counts; MET2013 not available from 2001-2004 so we'll need to extrapolate
+fread(here("ACS_IPUMS_2001_2014.csv")) %>%
+  filter(YEAR>=2005 & FTOTINC>0 & AGE==40 & (MET2013==19820 | MET2013==35620)) %>% 
   mutate(gnd=ifelse(SEX==1, "Men", "Women"),
          czname=ifelse(MET2013==19820, "Detroit", "New York City")) %>%
   group_by(gnd, czname) %>%
-  summarise(ACS_pop=sum(PERWT)) %>%
+  summarise(ACS_pop=(sum(PERWT)/10)*14) %>% #use average annual population to create total 14-year population 
   right_join(chetty_msa_long, by=c("gnd", "czname")) -> chetty_msa_long
 ```
 
