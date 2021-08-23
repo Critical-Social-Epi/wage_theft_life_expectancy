@@ -453,7 +453,32 @@ int3 <- int_func(prop=3, inc=3, scenario="Scenario 3")
 binded <- rbind(obs, int1, int2, int3)
 ```
 
-### Estimated income-LE relationship under observed scenario
+### Income-life-expectancy relationship by year
+
+Doesn't change much at lower end of distribution, where wage theft scenarios have strongest effect, so pooling across years seems smart to boost precision.
+
+```{r warning=FALSE, message=FALSE, fig.height=5, fig.width=13}
+read.csv(here('health_ineq_online_table_2.csv')) %>%
+  mutate(hh_inc=hh_inc*(352.6/337.3), #adjust Chetty estimates to 2016 dollars from 2012 dollars using CPI-U-RS (Chetty estimates in 2012 dollars, EPI estimates in 2016??)
+         gnd=factor(ifelse(gnd=="M", "Men", "Women"), levels=c("Women", "Men"))) -> chetty_annual
+
+ggplot(subset(chetty_annual, pctile<=80), aes(x=hh_inc, y=le_raceadj, group=gnd, color=gnd, label=gnd, fill=gnd)) + 
+  facet_wrap(~year, nrow=2) +
+  geom_line() + 
+  scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
+  scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
+  ylab("Life expectancy") +
+  xlab("Household income in thousands (excluding top 20%)") +
+  scale_y_continuous(expand=expansion(mult=c(0.0,0.1))) +
+  scale_x_continuous(breaks=c(0, 30000, 60000, 90000, 120000), labels=c("0", "30", "60", "90", "120"), expand=expansion(mult=c(0.0,0.04))) +
+  theme_light() +
+  guides(color=guide_legend(nrow=2,byrow=TRUE)) +
+  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"), legend.title=element_blank())
+
+ggsave("appendix_1.png", height=5, width=13, dpi=600)
+```
+
+### Estimated income-LE relationship under observed scenario in 2014
 
 ```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=4.25}
 #remove duplicated rows since they're identical for each income level
@@ -476,7 +501,7 @@ ggplot(subset(obs_sub, hh_inc<311000), aes(x=hh_inc, y=sim_1, group=gnd, color=g
   theme_light() +
   theme(legend.position="none")
 
-ggsave('appendix_1a.png', height=4, width=4.25, dpi=600)
+ggsave('appendix_2a.png', height=4, width=4.25, dpi=600)
 ```
 
 ### Point estimates
@@ -513,32 +538,7 @@ p2 <- plot_deciles_tot()
 
 p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
-ggsave('appendix_1c.png', height=6, width=8.5, dpi=600)
-```
-
-### Income-life-expectancy relationship by year
-
-Doesn't change much at lower end of distribution, where wage theft scenarios have strongest effect, so pooling across years seems smart to boost precision.
-
-```{r warning=FALSE, message=FALSE, fig.height=5, fig.width=13}
-read.csv(here('health_ineq_online_table_2.csv')) %>%
-  mutate(hh_inc=hh_inc*(352.6/337.3), #adjust Chetty estimates to 2016 dollars from 2012 dollars using CPI-U-RS (Chetty estimates in 2012 dollars, EPI estimates in 2016??)
-         gnd=factor(ifelse(gnd=="M", "Men", "Women"), levels=c("Women", "Men"))) -> chetty_annual
-
-ggplot(subset(chetty_annual, pctile<=80), aes(x=hh_inc, y=le_raceadj, group=gnd, color=gnd, label=gnd, fill=gnd)) + 
-  facet_wrap(~year, nrow=2) +
-  geom_line() + 
-  scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
-  scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
-  ylab("Life expectancy") +
-  xlab("Household income in thousands (excluding top 20%)") +
-  scale_y_continuous(expand=expansion(mult=c(0.0,0.1))) +
-  scale_x_continuous(breaks=c(0, 30000, 60000, 90000, 120000), labels=c("0", "30", "60", "90", "120"), expand=expansion(mult=c(0.0,0.04))) +
-  theme_light() +
-  guides(color=guide_legend(nrow=2,byrow=TRUE)) +
-  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"), legend.title=element_blank())
-
-ggsave("appendix_2.png", height=5, width=13, dpi=600)
+ggsave('appendix_2c.png', height=6, width=8.5, dpi=600)
 ```
 
 ## Modifying strength of income-mortality relationship
