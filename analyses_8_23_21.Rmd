@@ -50,6 +50,7 @@ library(stringr)
 library(ggpubr)
 library(nleqslv)
 library(data.table)
+library(broom)
 options(scipen=100000) #prevent scientific notation in plots
 
 #load chetty data
@@ -197,6 +198,21 @@ int3 <- int_func(prop=3, inc=3, scenario="Scenario 3")
 
 #bind together
 binded <- rbind(obs, int1, int2, int3)
+```
+
+## Model output
+
+```{r warning=FALSE, message=FALSE}
+tidy(fit) %>%
+  dplyr::select(c(term, estimate, std.error, p.value)) %>%
+  mutate(estimate=ifelse(term=="gndWomen" | term=="(Intercept)", estimate, estimate*1000),
+         std.error=ifelse(term=="gndWomen" | term=="(Intercept)", std.error, std.error*1000)) %>%
+  kable(digits=2, caption="Income coefficients correspond to effects of changes in 1000s of dollars") %>%
+  kable_styling("striped")
+
+glance(fit) %>%
+  kable(digits=3) %>%
+  kable_styling("striped")
 ```
 
 ## Density of income distribution below median across scenarios 
