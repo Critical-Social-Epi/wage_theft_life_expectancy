@@ -899,36 +899,26 @@ point_ests_cz <- function(pctiled1, pctiled2, rooted, fractioned){
 }
 
 #point estimates for difference in mean life expectancy across scenarios
-overall <- point_ests_cz(pctiled1=100, pctiled2=1, rooted=20, fractioned=1)
+point_ests_cz(pctiled1=100, pctiled2=1, rooted=20, fractioned=1) %>% arrange(czname, desc(gnd)) -> overall
 
 #point estimates for difference in mean life expectancy across scenarios within affected group
-affected <- point_ests_cz(pctiled1=4, pctiled2=1, rooted=4, fractioned=0.2)
+point_ests_cz(pctiled1=4, pctiled2=1, rooted=4, fractioned=0.2) %>% arrange(czname, desc(gnd)) -> affected
 
 #point estimates for difference in mean life expectancy across scenarios within unaffected group
-unaffected <- point_ests_cz(pctiled1=20, pctiled2=17, rooted=4, fractioned=0.2)
+unaffected <- point_ests_cz(pctiled1=20, pctiled2=17, rooted=4, fractioned=0.2) %>% arrange(czname, desc(gnd)) -> unaffected
 
 #bind all together
 rbind(overall, affected, unaffected) %>%
-  dplyr::select('czname', 'gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
-  arrange(czname,desc(gnd)) -> binded_ests
+  dplyr::select('czname', 'gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") -> binded_ests
 
 #print
 kable(binded_ests, digits=c(2,2,2,2,2,2,2,2,2,0,0,0), format.args = list(big.mark = ",", scientific = FALSE),
       col.names=c(" ", "Gender", "Scenario", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper")) %>%
   kable_styling("striped") %>%
   add_header_above(c(" "=3, "Mean LE"=3, "Diff in mean LE"=3, "Total years of LE extended"=3)) %>%
-  group_rows("Overall", 1, 4) %>%
-  group_rows("Lower HH income quintile", 5, 8) %>%
-  group_rows("Upper HH income quintile", 9, 12) %>%
-  group_rows("Overall", 13, 16) %>%
-  group_rows("Lower HH income quintile", 17, 20) %>%
-  group_rows("Upper HH income quintile", 21, 24) %>%
-  group_rows("Overall", 25, 28) %>%
-  group_rows("Lower HH income quintile", 29, 32) %>%
-  group_rows("Upper HH income quintile", 33, 36) %>%
-  group_rows("Overall", 37, 40) %>%
-  group_rows("Lower HH income quintile", 41, 44) %>%
-  group_rows("Upper HH income quintile", 45, 48)
+  group_rows("Overall", 1, 16) %>%
+  group_rows("Lower household income quintile", 17, 32) %>%
+  group_rows("Upper household income quintile", 33, 48)
 ```
 
 #### Plots
