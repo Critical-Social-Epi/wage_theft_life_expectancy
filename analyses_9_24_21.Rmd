@@ -1,5 +1,5 @@
 ---
-title: "Wage theft analyses"
+title: "Code for analyses in: 'A fair day’s wage for a fair day’s work? Wage theft, life expectancy, and life-expectancy inequities in the United States'"
 author: "Jerzy Eisenberg-Guyot"
 date: "`r format(Sys.time(), '%B %Y')`"
 output: 
@@ -484,7 +484,7 @@ ggplot(subset(chetty_annual, pctile<=80), aes(x=hh_inc, y=le_raceadj, group=gnd,
   scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
   scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
   ylab("Life expectancy") +
-  xlab("Household income in thousands (excluding top 20%)") +
+  xlab("Household income in thousands (excluding top decile)") +
   scale_y_continuous(expand=expansion(mult=c(0.0,0.1))) +
   scale_x_continuous(breaks=c(0, 30000, 60000, 90000, 120000), labels=c("0", "30", "60", "90", "120"), expand=expansion(mult=c(0.0,0.04))) +
   theme_light() +
@@ -943,10 +943,10 @@ binded %>%
          diff_upper_pop=diff_upper*ACS_pop*0.2) %>% 
   filter(type!="Observed") %>%
   dplyr::select('gnd', 'czname', 'type', 'quintile', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop", "ACS_pop") %>%
-  mutate(czname_gnd=paste(czname, ": ", gnd, sep="")) -> deciles
+  mutate(czname_gnd=factor(paste(czname, gnd, sep=": "), levels=c("Detroit: Women", "Detroit: Men", "New York City: Women", "New York City: Men"))) -> deciles
 
 #plot
-p1_women <- ggplot(subset(deciles, gnd=="Women"), aes(x=quintile, y=diff, group=type, color=type, fill=type)) + 
+p1_det <- ggplot(subset(deciles, czname=="Detroit"), aes(x=quintile, y=diff, group=type, color=type, fill=type)) + 
   facet_grid(~czname_gnd) +
   geom_hline(yintercept=0, lty=2, color="darkgrey") +
   geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
@@ -958,7 +958,7 @@ p1_women <- ggplot(subset(deciles, gnd=="Women"), aes(x=quintile, y=diff, group=
   theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
         axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
 
-p1_men <- ggplot(subset(deciles, gnd=="Men"), aes(x=quintile, y=diff, group=type, color=type, fill=type)) + 
+p1_nyc <- ggplot(subset(deciles, czname=="New York City"), aes(x=quintile, y=diff, group=type, color=type, fill=type)) + 
   facet_grid(~czname_gnd) +
   geom_hline(yintercept=0, lty=2, color="darkgrey") +
   geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
@@ -968,9 +968,9 @@ p1_men <- ggplot(subset(deciles, gnd=="Men"), aes(x=quintile, y=diff, group=type
   theme_light() +
   theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
         axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(),
-        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) 
 
-p2_women <- ggplot(subset(deciles, gnd=="Women"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type)) + 
+p2_det <- ggplot(subset(deciles, czname=="Detroit"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type)) + 
   facet_grid(~czname_gnd) +
   geom_hline(yintercept=0, lty=2, color="darkgrey") +
   geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
@@ -984,7 +984,7 @@ p2_women <- ggplot(subset(deciles, gnd=="Women"), aes(x=quintile, y=diff_pop, gr
   theme(strip.background.x=element_blank(), strip.text.x=element_blank(),
         strip.background.y=element_rect(color="darkgrey", fill=NA), strip.text.y=element_text(color="black"))
 
-p2_men <- ggplot(subset(deciles, gnd=="Men"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type)) + 
+p2_nyc <- ggplot(subset(deciles, czname=="New York City"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type)) + 
   facet_grid(~czname_gnd) +
   geom_hline(yintercept=0, lty=2, color="darkgrey") +
   geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
@@ -998,7 +998,7 @@ p2_men <- ggplot(subset(deciles, gnd=="Men"), aes(x=quintile, y=diff_pop, group=
         strip.background.y=element_rect(color="darkgrey", fill=NA), strip.text.y=element_text(color="black"),
         axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank())
 
-p1_women + p1_men + p2_women + p2_men + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+p1_det + p1_nyc + p2_det + p2_nyc + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
 ggsave('appendix_4d.png', height=6, width=9, dpi=600)
 ```
