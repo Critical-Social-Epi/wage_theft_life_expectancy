@@ -1,6 +1,6 @@
 ---
-title: "Code for analyses in: 'A fair day’s wage for a fair day’s work? Wage theft, life expectancy, and life-expectancy inequities in the United States'"
-author: "Jerzy Eisenberg-Guyot"
+title: "Code and output for: 'A fair day’s wage for a fair day’s work? Wage theft, life expectancy, and life-expectancy inequities in the United States'"
+author: ""
 date: "`r format(Sys.time(), '%B %Y')`"
 output: 
   html_document:
@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Data and methods
 
-We based these simulations on 2001-2014 household (HH) income and life expectancy (LE) data from Chetty et al.'s 2016 JAMA paper (https://healthinequality.org/) and EPI's 2017 report on MW violations (https://www.epi.org/publication/employers-steal-billions-from-workers-paychecks-each-year/). First, we fitted an OLS model to Chetty’s pooled 2001-2014 data (200 rows, one for each gender-income percentile), with race-adjusted LE as the dependent variable and a gender * HH income interaction term as the independent variable (with HH income specified as a 7-knot restricted cubic spline), weighted by the frequency counts in the Chetty data. Second, we created a large simulated population (1.4mm - 1/1000th the size of the underlying Chetty sample), with HH income as observed in the Chetty data, counts of respondents at each HH income level and gender stratum as observed in the Chetty data, and LE in each stratum as predicted by the linear model. We also estimated LE in a hypothetical population in which wage theft were eliminated. To do so, we used the same approach, but at each HH income level, we created a hypothetical income variable that added back in workers' stolen wages, and used that hypothetical income variable to predict LE for each respondent in the population. We then contrasted mean LE in the observed and counterfactual scenarios overall and within income percentiles. We also multiplied these mean differences by the total age-40 U.S. population in a given stratum from 2001-2014 to estimate the total years of LE extended by our counterfactual scenarios among 40-year-olds in 2014. We evaluated three scenarios regarding the prevalence and cost of wage theft for each gender and income stratum: 1) wage theft as common and costly as in the EPI data, 2) wage theft 2x as common and costly as in the EPI data, and 3) wage theft 3x as common and costly as in the EPI data. We then contrasted LE in the observed vs hypothetical scenarios overall and within income deciles for each gender. 
+We based these simulations on 2001-2014 household (HH) income and life expectancy (LE) data from Chetty et al.'s 2016 JAMA paper (https://healthinequality.org/) and EPI's 2017 report on MW violations (https://www.epi.org/publication/employers-steal-billions-from-workers-paychecks-each-year/). First, we fitted an OLS model to Chetty’s pooled 2001-2014 data (200 rows, one for each gender-income percentile), with race-adjusted LE as the dependent variable and a gender * HH income interaction term as the independent variable (with HH income specified as a 7-knot restricted cubic spline), weighted by the frequency counts in the Chetty data. Second, we created a large simulated population (1.4mm - 1/1000th the size of the underlying Chetty sample), with HH income as observed in the Chetty data, counts of respondents at each HH income level and gender stratum as observed in the Chetty data, and LE in each stratum as predicted by the linear model. We also estimated LE in a hypothetical population in which wage theft were eliminated. To do so, we used the same approach, but at each HH income level, we created a hypothetical income variable that added back in workers' stolen wages, and used that hypothetical income variable to predict LE for each respondent in the population. We then contrasted mean LE in the observed and counterfactual scenarios overall and within income percentiles. We also multiplied these mean differences by the total age-40 U.S. population in a given stratum from 2001-2014 (https://usa.ipums.org/usa/) to estimate the total years of LE extended by our counterfactual scenarios among 40-year-olds in 2014. We evaluated three scenarios regarding the prevalence and cost of wage theft for each gender and income stratum: 1) wage theft as common and costly as in the EPI data, 2) wage theft 2x as common and costly as in the EPI data, and 3) wage theft 3x as common and costly as in the EPI data. We then contrasted LE in the observed vs hypothetical scenarios overall and within income deciles for each gender. 
 
 We estimated standard errors (SEs) for our overall mean life expectancy estimates for a given gender under a given scenario as follows:
 <br />
@@ -1031,4 +1031,10 @@ ggplot(change_over_time, aes(x=year, y=diff, group=gnd, color=gnd, label=gnd, fi
   theme(legend.position="none")
 
 ggsave("appendix_5.png", height=4, width=5, dpi=600)
+```
+
+# Session info
+
+```{r warning=FALSE, message=FALSE}
+sessionInfo()
 ```
