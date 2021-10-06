@@ -469,6 +469,21 @@ int3 <- int_func(prop=3, inc=3, scenario="Scenario 3")
 binded <- rbind(obs, int1, int2, int3)
 ```
 
+### Model output
+
+```{r warning=FALSE, message=FALSE}
+tidy(fit) %>%
+  dplyr::select(c(term, estimate, std.error, p.value)) %>%
+  mutate(estimate=ifelse(term=="gndWomen" | term=="(Intercept)", estimate, estimate*1000),
+         std.error=ifelse(term=="gndWomen" | term=="(Intercept)", std.error, std.error*1000)) %>%
+  kable(digits=2, caption="Income coefficients correspond to effects of changes in 1000s of dollars") %>%
+  kable_styling("striped")
+
+glance(fit) %>%
+  kable(digits=3) %>%
+  kable_styling("striped")
+```
+
 ### Income-life-expectancy relationship by year
 
 Doesn't change much at lower end of distribution, where wage theft scenarios have strongest effect, so pooling across years seems smart to boost precision.
@@ -618,7 +633,7 @@ int6 <- int_func(prop=2/2*3, inc=3, scenario="Scenario 3: 2/2")
 binded <- rbind(obs, int1, int2, int3, int4, int5, int6)
 ```
 
-## Point estimates
+### Point estimates
 
 ```{r warning=FALSE, message=FALSE}
 #point estimates for difference in mean life expectancy across scenarios
@@ -640,7 +655,7 @@ kable(rbind(overall, affected, unaffected), digits=c(2,2,2,2,2,2,2,2,0,0,0), for
   group_rows("Upper HH income decile", 29, 42)
 ```
 
-## Plots
+### Plots
 
 ```{r warning=FALSE, message=FALSE, fig.height=6.25, fig.width=12}
 #decile point estimates
@@ -846,7 +861,22 @@ int3 <- int_func(num=3, scenario="Scenario 3")
 binded <- rbind(obs, int1, int2, int3)
 ```
 
-#### Estimated income-LE relationship under observed scenario
+### Model output
+
+```{r warning=FALSE, message=FALSE}
+tidy(fit) %>%
+  dplyr::select(c(term, estimate, std.error, p.value)) %>%
+  mutate(estimate=ifelse(term=="gndWomen" | term=="(Intercept)" | term=="cznameNew York City" | term=="gndWomen:cznameNew York City", estimate, estimate*1000),
+         std.error=ifelse(term=="gndWomen" | term=="(Intercept)" | term=="cznameNew York City" | term=="gndWomen:cznameNew York City", std.error, std.error*1000)) %>%
+  kable(digits=2, caption="Income coefficients correspond to effects of changes in 1000s of dollars") %>%
+  kable_styling("striped")
+
+glance(fit) %>%
+  kable(digits=3) %>%
+  kable_styling("striped")
+```
+
+### Estimated income-LE relationship under observed scenario
 
 ```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=7}
 #remove duplicated rows since they're identical for each income level
@@ -873,7 +903,7 @@ ggplot(subset(obs_sub, hh_inc<215000), aes(x=hh_inc, y=sim_1, group=gnd, color=g
 ggsave('appendix_4a.png', height=4, width=7, dpi=600)
 ```
 
-#### Point estimates 
+### Point estimates 
 
 ```{r warning=FALSE, message=FALSE}
 #point estimates function
@@ -921,7 +951,7 @@ kable(binded_ests, digits=c(2,2,2,2,2,2,2,2,2,0,0,0), format.args = list(big.mar
   group_rows("Upper household income quintile", 33, 48)
 ```
 
-#### Plots
+### Plots
 
 ```{r warning=FALSE, message=FALSE, fig.height=6, fig.width=9}
 #difference in mean life expectancy across scenarios at each quintile
