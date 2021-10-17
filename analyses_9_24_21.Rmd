@@ -30,13 +30,10 @@ where the weighted mean is weighted by the frequency counts provided by Chetty e
 
 ## Key assumptions regarding wage-theft-LE relationship 
 
-* Income-LE relationship is 100% causal 
-* Income reported in Chetty data excludes stolen wages 
-* Recovering stolen wages affects LE solely through direct effects on individual-level income (i.e., no spillovers, no effects mediated through reductions in inequality, no effects mediated through pathways other than income, like reductions in stress from not feeling cheated, etc.)
-* No loss of means-tested benefits after stolen wages recovered
-* No loss of income at top of income distribution after stolen wages recovered 
-* Incomes independent across genders
-* EPI estimates apply straightforwardly to Chetty sample  
+* Income-LE relationship estimated by Chetty is causal 
+* Preventing wage theft would have affected life expectancy solely through income’s direct individual-level effects (e.g., no spillover effects within families, no contextual-level effects, no effects through pathways other than increased income, no loss of means-tested benefits)
+* Those at the top of the income distribution would not have lost income if wage theft were prevented (a minor assumption, given the weak income-LE association at higher incomes
+* Cooper and Kroeger’s estimates apply to the same populations as Chetty et al.’s, including within subgroups
 
 ```{r,  warning=FALSE, message=FALSE}
 library(tidyverse)
@@ -70,7 +67,7 @@ chetty %>%
 
 #merge in ACS data on population counts from 2001-2014; restrict to those with non-zero incomes, age 40, and not living in group quarters (per IPUMS recommendation)
 fread(here("ACS_IPUMS_2001_2014.csv")) %>%
-  filter(FTOTINC>0 & AGE==40 & (GQ==1 | GQ==2)) %>% #family income yields similar estimates to household income, but I assume "family income" is a bit closer to Chetty's definition since joint tax filers are likely to be related
+  filter(FTOTINC>0 & AGE==40 & (GQ==1 | GQ==2)) %>% #family income yields similar estimates to household income, but I assume "family income" is closer to Chetty's definition since joint tax filers are likely to be related
   mutate(gnd=ifelse(SEX==1, "Men", "Women")) %>%
   group_by(gnd) %>%
   summarise(ACS_pop=sum(PERWT)) %>%
@@ -110,7 +107,7 @@ ggplot(subset(chetty, hh_inc<311000), aes(x=hh_inc, y=le_raceadj, group=gnd, col
 
 The EPI are estimates are based on CPS data from 2013-2015. The estimates in the EPI data and the Chetty data generalize to different populations - the EPI estimates came from a sample of MW-eligible workers (88% of all workers) of any age at each family income level in the 10 largest U.S. cities, while the Chetty estimates are age-40 life expectancy among positive earners in the entire U.S. population at each HH income level.  
 
-The EPI data contains the income-pooled ratio of the prevalence of wage theft among women versus men (4.9% vs 3.5%; similar in NELP data), the gender-pooled prevalence of wage theft among each household income strata, the gender-pooled cost of wage theft among each household income strata, and the gender composition of MW eligible workers (women are 46.6% of MW eligible workers). To calculate the gender-specific prevalence of wage theft among each household income strata, we used simultaneous equations, assuming the overall women/men wage theft prevalence ratio held within income strata. It probably doesn't precisely, since one reason women experience more wage theft than men is that they're segregated into lower-income jobs (luckily, the distribution of family income across genders doesn't vary much). We assumed the cost of wage theft within each household income strata was the same across genders, which the EPI data suggests is approximately true, income aside. 
+The EPI data contains the income-pooled ratio of the prevalence of wage theft among women versus men (4.9% vs 3.5%; similar in NELP data), the gender-pooled prevalence of wage theft among each household income strata, the gender-pooled cost of wage theft among each household income strata, and the gender composition of MW eligible workers (women are 46.6% of MW eligible workers). To calculate the gender-specific prevalence of wage theft among each household income strata, we used simultaneous equations, assuming the overall women/men wage theft prevalence ratio held within income strata. It probably doesn't precisely, since one reason women experience more wage theft than men is that they're segregated into lower-income jobs (although the distribution of family income across genders doesn't vary much). We assumed the cost of wage theft within each household income strata was the same across genders, which the EPI data suggests is approximately true, income aside. 
 
 ```{r warning=FALSE, message=FALSE}
 theft <- read.csv(here('epi_data_national.csv'), fileEncoding="UTF-8-BOM")
@@ -485,8 +482,6 @@ glance(fit) %>%
 ```
 
 ### Income-life-expectancy relationship by year
-
-Doesn't change much at lower end of distribution, where wage theft scenarios have strongest effect, so pooling across years seems smart to boost precision.
 
 ```{r warning=FALSE, message=FALSE, fig.height=5, fig.width=13}
 read.csv(here('health_ineq_online_table_2.csv')) %>%
