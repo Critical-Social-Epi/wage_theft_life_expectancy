@@ -100,7 +100,7 @@ ggplot(subset(chetty, hh_inc<311000), aes(x=hh_inc, y=le_raceadj, group=gnd, col
   scale_y_continuous(limits=c(72.5, 89.5), expand=expansion(mult=c(0.0,0.01))) +
   scale_x_continuous(breaks=c(14000, 37000, 62000, 96000, 168000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0,0.025))) +
   theme_light() +
-  theme(legend.position="none")
+  theme(legend.position="none", axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"))
 ```
 
 # EPI data on MW violations
@@ -168,7 +168,7 @@ int_func <- function(prop, inc, scenario){#prop and inc are multipliers for EPI 
   int1 <- cbind(chetty_tot_int, data.frame(sim_1=predict(fit, newdata = chetty_tot_int, type="response")), data.frame(type=scenario))
 }
 
-#7 spline knots since underlying data are based on over a billion observations  
+#7 spline knots since underlying data are based on over a billion observations; 7 is upper bound of what Harrell suggests  
 knots_7 <- as.numeric(quantile(chetty$hh_inc, c(.025, .1833, .3417, .5, .6583, .8167, .975)))
 
 #fit models to Chetty data to interpolate across chunky income values and smooth across random dips
@@ -234,7 +234,7 @@ ggplot(subset(binded_sub, pctile<=50), aes(x=hh_inc/1000)) +
   scale_color_manual(values=c("#1F78B4", "#6A3D9A", "#33A02C", "#FF7F00")) +
   scale_x_continuous(expand=expansion(mult=c(0,0.025))) +
   theme_light() +
-  theme(legend.title=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(),
+  theme(legend.title=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(), axis.text.x=element_text(color="black"),
         strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black")) + 
   guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 ```
@@ -260,7 +260,7 @@ ggplot(subset(obs_sub, hh_inc<311000), aes(x=hh_inc, y=sim_1, group=gnd, color=g
   scale_y_continuous(limits=c(74, 89.5), expand=expansion(mult=c(0.0,0.01))) +
   scale_x_continuous(breaks=c(14000, 37000, 62000, 96000, 168000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0,0.025))) +
   theme_light() +
-  theme(legend.position="none")
+  theme(legend.position="none", axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"))
 
 ggsave('fig_1.png', height=4, width=4.25, dpi=600)
 ```
@@ -344,11 +344,11 @@ plot_deciles_est <- function(vals=c("#6A3D9A", "#33A02C", "#FF7F00"), fattened=3
     geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=fattened, position=position_dodge(width=widthed)) +  
     scale_color_manual(values=vals) +
     scale_fill_manual(values=vals) +
-    ylab("Difference in mean life expectancy") +
+    ylab("Difference in life expectancy (years)") +
     scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
     theme_light() +
     theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
-          axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+          axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.text.y=element_text(color="black"))
 }
 
 #plot total years extended by decile function
@@ -364,7 +364,7 @@ plot_deciles_tot <- function(vals=c("#6A3D9A", "#33A02C", "#FF7F00"), fattened=3
     scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
     scale_x_discrete(labels=c('1', "2", "3", "4", "5", "6", "7", "8", "9", "10")) +
     theme_light() +
-    theme(strip.background=element_blank(), strip.text=element_blank())
+    theme(strip.background=element_blank(), strip.text=element_blank(), axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"))
 }
 
 #decile point estimates
@@ -380,6 +380,127 @@ ggsave('fig_2.png', height=6, width=8.5, dpi=600)
 ```
 
 # Supplementary analyses
+
+## Using loess to model income rather than a spline
+
+```{r warning=FALSE, message=FALSE}
+#scenario function
+int_func <- function(prop, inc, scenario){#prop and inc are multipliers for EPI theft prevalence and cost estimates
+  
+  #seed
+  set.seed(4325)
+  
+  #create sample
+  chetty_tot %>%
+    group_by(gnd, hh_inc_cat) %>%
+    sample_frac(size=prop_theft*prop, replace=F) %>%
+    mutate(hh_inc_rev=hh_inc + inc*yr_theft) %>%
+    ungroup() %>% 
+    dplyr::select('id', 'hh_inc_rev') -> chetty_samps
+  
+  #create hypothetical income variable
+  chetty_tot %>%
+    left_join(chetty_samps, by='id') %>%
+    mutate(hh_inc=ifelse(!is.na(hh_inc_rev), hh_inc_rev, hh_inc)) %>%
+    dplyr::select(-hh_inc_rev) -> chetty_tot_int
+  
+  #simulate LE using fitted model and hypothetical income 
+  int1 <- rbind(cbind(subset(chetty_tot_int, gnd=="Women"), data.frame(sim_1=predict(fit_women, newdata = subset(chetty_tot_int, gnd=="Women"), type="response")), data.frame(type=scenario)),
+                cbind(subset(chetty_tot_int, gnd=="Men"), data.frame(sim_1=predict(fit_men, newdata = subset(chetty_tot_int, gnd=="Men"), type="response")), data.frame(type=scenario)))
+}
+
+#fit models to Chetty data to interpolate across chunky income values; might as well use very small span, given purpose of this sensitivity analysis
+fit_women <- loess(le_raceadj ~ hh_inc, span=0.05, control=loess.control(surface='direct'), data=subset(chetty, gnd=="Women"), w=count)
+fit_men <- loess(le_raceadj ~ hh_inc, span=0.05, control=loess.control(surface='direct'), data=subset(chetty, gnd=="Men"), w=count)
+
+#create large expanded Chetty dataset -> we'll use this to get weighed average estimates for our various scenarios
+data.frame(pctile=rep(chetty$pctile, chetty$count/1000), 
+           hh_inc=rep(chetty$hh_inc, chetty$count/1000),
+           hh_inc_cat=rep(chetty$hh_inc_cat, chetty$count/1000),
+           prop_theft=rep(chetty$prop_theft, chetty$count/1000),
+           yr_theft=rep(chetty$yr_theft, chetty$count/1000),
+           gnd=rep(chetty$gnd, chetty$count/1000),
+           sd=rep(chetty$sd_le_raceadj, chetty$count/1000),
+           ACS_pop=rep(chetty$ACS_pop, chetty$count/1000)) %>%
+  mutate(id=row_number()) -> chetty_tot
+
+#observed income-LE relationship from fitted model
+obs <- rbind(cbind(subset(chetty_tot, gnd=="Women"), data.frame(sim_1=predict(fit_women, newdata = subset(chetty_tot, gnd=="Women"), type="response")), data.frame(type="Observed")),
+             cbind(subset(chetty_tot, gnd=="Men"), data.frame(sim_1=predict(fit_men, newdata = subset(chetty_tot, gnd=="Men"), type="response")), data.frame(type="Observed")))
+
+#predicted LE under hypothetical scenarios
+int1 <- int_func(prop=1, inc=1, scenario="Scenario 1")
+int2 <- int_func(prop=2, inc=2, scenario="Scenario 2")
+int3 <- int_func(prop=3, inc=3, scenario="Scenario 3")
+
+#bind together
+binded <- rbind(obs, int1, int2, int3)
+```
+
+### Estimated income-LE relationship under observed scenario
+
+```{r warning=FALSE, message=FALSE, fig.height=4, fig.width=6}
+#remove duplicated rows since they're identical for each income level
+obs %>% 
+  filter(!duplicated(paste(gnd, pctile))) %>%
+  right_join(chetty[,c("hh_inc", "le_raceadj", "gnd")], by=c("gnd", "hh_inc")) -> obs_sub
+
+#labels
+xlabels <- c("14\n(10)", "37\n(30)", "62\n(50)", "96\n(70)", "168\n(90)")
+
+ggplot(subset(obs_sub, hh_inc<311000), aes(x=hh_inc, y=sim_1, group=gnd, color=gnd, label=gnd, fill=gnd)) + 
+  geom_point(aes(y=le_raceadj), size=0.35) +
+  geom_line(size=0.2, arrow = arrow(length=unit(0.30,"cm"), ends="last", type = "open")) + 
+  geom_ribbon(aes(ymin=sim_1 - 1.96 * sd, ymax=sim_1 + 1.96 * sd), alpha=0.2, lty=0) +
+  geom_dl(method='smart.grid') +
+  scale_color_manual(values=c("#1F78B4", "#6A3D9A")) +
+  scale_fill_manual(values=c("#1F78B4", "#6A3D9A")) +
+  ylab("Life expectancy") + 
+  xlab("Household income in thousands\n(Household income percentile)") +
+  scale_y_continuous(limits=c(72.7, 88.9), expand=expansion(mult=c(0.0,0.01))) +
+  scale_x_continuous(breaks=c(14000, 37000, 62000, 96000, 168000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0.005,0.025))) +
+  theme_light() +
+  theme(legend.position="none", axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"))
+
+ggsave('appendix_1a.png', height=4, width=6, dpi=600)
+```
+
+### Point estimates
+
+```{r warning=FALSE, message=FALSE}
+#point estimates for difference in mean life expectancy across scenarios
+overall <- point_ests(pctiled1=100, pctiled2=1, rooted=100, fractioned=1)
+
+#point estimates for difference in mean life expectancy across scenarios within affected group
+affected <- point_ests(pctiled1=10, pctiled2=1, rooted=10, fractioned=0.1)
+
+#point estimates for difference in mean life expectancy across scenarios within unaffected group
+unaffected <- point_ests(pctiled1=100, pctiled2=91, rooted=10, fractioned=0.1)
+
+#print
+kable(rbind(overall, affected, unaffected), digits=c(2,2,2,2,2,2,2,2,0,0,0), format.args = list(big.mark = ",", scientific = FALSE),
+      col.names=c("", "Scenario", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper", "Estimate", "Lower", "Upper")) %>%
+  kable_styling("striped") %>%
+  add_header_above(c(" "=2, "Mean LE"=3, "Diff in mean LE"=3, "Total years of LE extended"=3)) %>%
+  group_rows("Overall", 1, 8) %>%
+  group_rows("Lower HH income decile", 9, 16) %>%
+  group_rows("Upper HH income decile", 17, 24)
+```
+
+### Plots
+
+```{r warning=FALSE, message=FALSE, fig.height=6, fig.width=8.5}
+#decile point estimates
+deciles <- point_ests_plots()
+
+#plot
+p1 <- plot_deciles_est()
+p2 <- plot_deciles_tot()
+
+p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+
+ggsave('appendix_1c.png', height=6, width=8.5, dpi=600)
+```
 
 ## Using 2014 data alone
 
@@ -499,9 +620,10 @@ ggplot(subset(chetty_annual, pctile<=80), aes(x=hh_inc, y=le_raceadj, group=gnd,
   scale_x_continuous(breaks=c(0, 30000, 60000, 90000, 120000), labels=c("0", "30", "60", "90", "120"), expand=expansion(mult=c(0.0,0.04))) +
   theme_light() +
   guides(color=guide_legend(nrow=2,byrow=TRUE)) +
-  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"), legend.title=element_blank())
+  theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"), legend.title=element_blank(), 
+        axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"))
 
-ggsave("appendix_1.png", height=5, width=13, dpi=600)
+ggsave("appendix_2.png", height=5, width=13, dpi=600)
 ```
 
 ### Estimated income-LE relationship under observed scenario in 2014
@@ -525,9 +647,9 @@ ggplot(subset(obs_sub, hh_inc<311000), aes(x=hh_inc, y=sim_1, group=gnd, color=g
   scale_y_continuous(limits=c(74, 91.5), expand=expansion(mult=c(0.0,0.01))) +
   scale_x_continuous(breaks=c(13000, 34000, 58000, 92000, 164000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0,0.025))) +
   theme_light() +
-  theme(legend.position="none")
+  theme(legend.position="none", axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"))
 
-ggsave('appendix_2a.png', height=4, width=4.25, dpi=600)
+ggsave('appendix_3a.png', height=4, width=4.25, dpi=600)
 ```
 
 ### Point estimates
@@ -564,7 +686,7 @@ p2 <- plot_deciles_tot()
 
 p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
-ggsave('appendix_2c.png', height=6, width=8.5, dpi=600)
+ggsave('appendix_3c.png', height=6, width=8.5, dpi=600)
 ```
 
 ## Modifying strength of income-mortality relationship
@@ -662,7 +784,7 @@ p2 <- plot_deciles_tot(vals=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF
 
 p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
-ggsave('appendix_3b.png', height=6.25, width=12, dpi=600)
+ggsave('appendix_4b.png', height=6.25, width=12, dpi=600)
 ```
 
 ## City-specific estimates
@@ -747,7 +869,8 @@ ggplot(subset(chetty_msa_long, hh_inc<215000), aes(x=hh_inc, y=le_raceadj, group
   scale_y_continuous(limits=c(71, 89), expand=expansion(mult=c(0.0,0.01))) +
   scale_x_continuous(breaks=c(14000, 37000, 62000, 96000, 168000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0,0.025))) +
   theme_light() +
-  theme(legend.position="none", strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"))
+  theme(legend.position="none", strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"), 
+        axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"))
 ```
 
 ### EPI data on MW violations
@@ -893,9 +1016,10 @@ ggplot(subset(obs_sub, hh_inc<215000), aes(x=hh_inc, y=sim_1, group=gnd, color=g
   scale_y_continuous(limits=c(72.5, 89.5), expand=expansion(mult=c(0.0,0.01))) +
   scale_x_continuous(breaks=c(14000, 37000, 62000, 96000, 168000), labels=xlabels, minor_breaks=NULL, expand=expansion(mult=c(0,0.025))) +
   theme_light() +
-  theme(legend.position="none", strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"))
+  theme(legend.position="none", strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"), 
+        axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"))
 
-ggsave('appendix_4a.png', height=4, width=7, dpi=600)
+ggsave('appendix_5a.png', height=4, width=7, dpi=600)
 ```
 
 ### Point estimates 
@@ -977,11 +1101,11 @@ p1_det <- ggplot(subset(deciles, czname=="Detroit"), aes(x=quintile, y=diff, gro
   geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
   scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
   scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
-  ylab("Difference in mean life expectancy") +
+  ylab("Difference in life expectancy (years)") +
   scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
   theme_light() +
   theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
-        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+        axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.text.y=element_text(color="black"))
 
 p1_nyc <- ggplot(subset(deciles, czname=="New York City"), aes(x=quintile, y=diff, group=type, color=type, fill=type)) + 
   facet_grid(~czname_gnd) +
@@ -1006,7 +1130,7 @@ p2_det <- ggplot(subset(deciles, czname=="Detroit"), aes(x=quintile, y=diff_pop,
   scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
   scale_x_discrete(labels=c("1","2","3","4","5")) +
   theme_light() +
-  theme(strip.background.x=element_blank(), strip.text.x=element_blank(),
+  theme(strip.background.x=element_blank(), strip.text.x=element_blank(), axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"), 
         strip.background.y=element_rect(color="darkgrey", fill=NA), strip.text.y=element_text(color="black"))
 
 p2_nyc <- ggplot(subset(deciles, czname=="New York City"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type)) + 
@@ -1019,13 +1143,13 @@ p2_nyc <- ggplot(subset(deciles, czname=="New York City"), aes(x=quintile, y=dif
   scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
   scale_x_discrete(labels=c("1","2","3","4","5")) +
   theme_light() +
-  theme(strip.background.x=element_blank(), strip.text.x=element_blank(),
+  theme(strip.background.x=element_blank(), strip.text.x=element_blank(), axis.text.x=element_text(color="black"),
         strip.background.y=element_rect(color="darkgrey", fill=NA), strip.text.y=element_text(color="black"),
         axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank())
 
 p1_det + p1_nyc + p2_det + p2_nyc + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
 
-ggsave('appendix_4d.png', height=6, width=9, dpi=600)
+ggsave('appendix_5d.png', height=6, width=9, dpi=600)
 ```
 
 ## Life expectancy inequity in tenth versus first income deciles by year
@@ -1053,9 +1177,9 @@ ggplot(change_over_time, aes(x=year, y=diff, group=gnd, color=gnd, label=gnd, fi
   scale_y_continuous(breaks=c(0, 3, 6, 9, 12), limits=c(0, 12.5), expand=expansion(mult=c(0.0,0.01))) +
   scale_x_continuous(breaks=c(2001, 2005, 2009, 2013), expand=expansion(mult=c(0.0,0.0))) +
   theme_light() +
-  theme(legend.position="none")
+  theme(legend.position="none", axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"))
 
-ggsave("appendix_5.png", height=4, width=5, dpi=600)
+ggsave("appendix_6.png", height=4, width=5, dpi=600)
 ```
 
 # Session info
