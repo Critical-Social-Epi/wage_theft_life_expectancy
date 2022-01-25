@@ -267,7 +267,7 @@ ggplot(subset(obs_sub, hh_inc<311000), aes(x=hh_inc, y=sim_1, group=gnd, color=g
   theme_light() +
   theme(legend.position="none", axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"))
 
-ggsave('fig_1.png', height=4, width=4.25, dpi=600)
+ggsave('fig_1.jpg', height=4, width=4.25, dpi=600)
 ```
 
 ## Point estimates
@@ -368,13 +368,14 @@ point_ests_plots <- function(){
 }
 
 #plot point estimates by decile function
-plot_deciles_est <- function(vals=c("#6A3D9A", "#33A02C", "#FF7F00"), fattened=3, widthed=0.8){
-  ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type)) + 
+plot_deciles_est <- function(vals=c("#6A3D9A", "#33A02C", "#FF7F00"), vals_shape=c(16,15,17), fattened=3, widthed=0.8){
+  ggplot(deciles, aes(x=decile, y=diff, group=type, color=type, fill=type, shape=type)) + 
     facet_wrap(~gnd) +
     geom_hline(yintercept=0, lty=2, color="darkgrey") +
-    geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=fattened, position=position_dodge(width=widthed)) +  
+    geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.56, fatten=fattened, position=position_dodge(width=widthed)) +  
     scale_color_manual(values=vals) +
     scale_fill_manual(values=vals) +
+    scale_shape_manual(values=vals_shape) +
     ylab("Diff. in expected age at death (years)") +
     scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
     theme_light() +
@@ -383,13 +384,14 @@ plot_deciles_est <- function(vals=c("#6A3D9A", "#33A02C", "#FF7F00"), fattened=3
 }
 
 #plot total years extended by decile function
-plot_deciles_tot <- function(vals=c("#6A3D9A", "#33A02C", "#FF7F00"), fattened=3, widthed=0.8){
-  ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=type)) + 
+plot_deciles_tot <- function(vals=c("#6A3D9A", "#33A02C", "#FF7F00"), vals_shape=c(16,15,17), fattened=3, widthed=0.8){
+  ggplot(deciles, aes(x=decile, y=diff_pop, group=type, color=type, fill=type, shape=type)) + 
     facet_wrap(~gnd) +
     geom_hline(yintercept=0, lty=2, color="darkgrey") +
-    geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=fattened, position=position_dodge(width=widthed)) + 
+    geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.56, fatten=fattened, position=position_dodge(width=widthed)) + 
     scale_color_manual(values=vals) +
     scale_fill_manual(values=vals) +
+    scale_shape_manual(values=vals_shape) +
     ylab("Total years extended") +
     xlab("Household income decile") +
     scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
@@ -405,9 +407,9 @@ deciles <- point_ests_plots()
 p1 <- plot_deciles_est()
 p2 <- plot_deciles_tot()
 
-p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T), shape=guide_legend(reverse=T))
 
-ggsave('fig_2.png', height=6, width=8.5, dpi=600)
+ggsave('fig_2.jpg', height=6, width=8.5, dpi=600)
 ```
 
 # Supplementary analyses
@@ -537,7 +539,7 @@ deciles <- point_ests_plots()
 p1 <- plot_deciles_est()
 p2 <- plot_deciles_tot()
 
-p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T), shape=guide_legend(reverse=T))
 
 ggsave('appendix_1d.png', height=6, width=8.5, dpi=600)
 ```
@@ -733,7 +735,7 @@ deciles <- point_ests_plots()
 p1 <- plot_deciles_est()
 p2 <- plot_deciles_tot()
 
-p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T), shape=guide_legend(reverse=T))
 
 ggsave('appendix_3d.png', height=6, width=8.5, dpi=600)
 ```
@@ -813,10 +815,10 @@ kable(did, digits=c(2,2,2,2,2,0,0,0), format.args = list(big.mark = ",", scienti
 deciles <- point_ests_plots()
 
 #plot
-p1 <- plot_deciles_est(vals=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00"), fattened=2, widthed=1.0)
-p2 <- plot_deciles_tot(vals=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00"), fattened=2, widthed=1.0)
+p1 <- plot_deciles_est(vals=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00"), vals_shape=c(16,16,15,15,17,17), fattened=2, widthed=1.0)
+p2 <- plot_deciles_tot(vals=c("#CAB2D6", "#6A3D9A", "#B2DF8A", "#33A02C", "#FDBF6F", "#FF7F00"), vals_shape=c(16,16,15,15,17,17), fattened=2, widthed=1.0)
 
-p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+p1 + p2 + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T), shape=guide_legend(reverse=T))
 
 ggsave('appendix_4c.png', height=6.25, width=12, dpi=600)
 ```
@@ -1185,36 +1187,39 @@ binded %>%
   mutate(czname_gnd=factor(paste(czname, gnd, sep=": "), levels=c("Detroit: Women", "Detroit: Men", "New York City: Women", "New York City: Men"))) -> deciles
 
 #plot
-p1_det <- ggplot(subset(deciles, czname=="Detroit"), aes(x=quintile, y=diff, group=type, color=type, fill=type)) + 
+p1_det <- ggplot(subset(deciles, czname=="Detroit"), aes(x=quintile, y=diff, group=type, color=type, fill=type, shape=type)) + 
   facet_grid(~czname_gnd) +
   geom_hline(yintercept=0, lty=2, color="darkgrey") +
-  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
+  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.56, fatten=2, position=position_dodge(width=0.8)) + 
   scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
   scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_shape_manual(values=c(16,15,17), labels=c("Scenario 1", "Scenario 2", "Scenario 3")) +
   ylab("Diff. in expected age at death (years)") +
   scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
   theme_light() +
   theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
         axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.text.y=element_text(color="black"))
 
-p1_nyc <- ggplot(subset(deciles, czname=="New York City"), aes(x=quintile, y=diff, group=type, color=type, fill=type)) + 
+p1_nyc <- ggplot(subset(deciles, czname=="New York City"), aes(x=quintile, y=diff, group=type, color=type, fill=type, shape=type)) + 
   facet_grid(~czname_gnd) +
   geom_hline(yintercept=0, lty=2, color="darkgrey") +
-  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
+  geom_pointrange(aes(y=diff, ymin=diff_lower, ymax=diff_upper), size=0.56, fatten=2, position=position_dodge(width=0.8)) + 
   scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
   scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_shape_manual(values=c(16,15,17), labels=c("Scenario 1", "Scenario 2", "Scenario 3")) +
   scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower), max(deciles$diff_upper))) +
   theme_light() +
   theme(strip.background=element_rect(color="darkgrey", fill=NA), strip.text=element_text(color="black"),
         axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(),
         axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) 
 
-p2_det <- ggplot(subset(deciles, czname=="Detroit"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type)) + 
+p2_det <- ggplot(subset(deciles, czname=="Detroit"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type, shape=type)) + 
   facet_grid(~czname_gnd) +
   geom_hline(yintercept=0, lty=2, color="darkgrey") +
-  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
+  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.56, fatten=2, position=position_dodge(width=0.8)) + 
   scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
   scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_shape_manual(values=c(16,15,17), labels=c("Scenario 1", "Scenario 2", "Scenario 3")) +
   ylab("Total years extended") +
   xlab("Household income quintile") +
   scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
@@ -1223,12 +1228,13 @@ p2_det <- ggplot(subset(deciles, czname=="Detroit"), aes(x=quintile, y=diff_pop,
   theme(strip.background.x=element_blank(), strip.text.x=element_blank(), axis.text.x=element_text(color="black"), axis.text.y=element_text(color="black"), 
         strip.background.y=element_rect(color="darkgrey", fill=NA), strip.text.y=element_text(color="black"))
 
-p2_nyc <- ggplot(subset(deciles, czname=="New York City"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type)) + 
+p2_nyc <- ggplot(subset(deciles, czname=="New York City"), aes(x=quintile, y=diff_pop, group=type, color=type, fill=type, shape=type)) + 
   facet_grid(~czname_gnd) +
   geom_hline(yintercept=0, lty=2, color="darkgrey") +
-  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.5, fatten=2, position=position_dodge(width=0.8)) + 
+  geom_pointrange(aes(y=diff_pop, ymin=diff_lower_pop, ymax=diff_upper_pop), size=0.56, fatten=2, position=position_dodge(width=0.8)) + 
   scale_color_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
   scale_fill_manual(values=c("#6A3D9A", "#33A02C", "#FF7F00"), labels=c('Scenario 1', 'Scenario 2', 'Scenario 3')) +
+  scale_shape_manual(values=c(16,15,17), labels=c("Scenario 1", "Scenario 2", "Scenario 3")) +
   xlab("Household income quintile") +
   scale_y_continuous(expand=expansion(mult=c(0.0, 0.01)),  limits=c(min(deciles$diff_lower_pop), max(deciles$diff_upper_pop))) +
   scale_x_discrete(labels=c("1","2","3","4","5")) +
@@ -1237,7 +1243,7 @@ p2_nyc <- ggplot(subset(deciles, czname=="New York City"), aes(x=quintile, y=dif
         strip.background.y=element_rect(color="darkgrey", fill=NA), strip.text.y=element_text(color="black"),
         axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank())
 
-p1_det + p1_nyc + p2_det + p2_nyc + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T))
+p1_det + p1_nyc + p2_det + p2_nyc + plot_layout(guides = "collect", nrow=2) & theme(legend.position = "right", legend.title=element_blank()) & guides(color=guide_legend(reverse=T), fill=guide_legend(reverse=T), shape=guide_legend(reverse=T))
 
 ggsave('appendix_6f.png', height=6, width=9, dpi=600)
 ```
