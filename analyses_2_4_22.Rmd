@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Data and methods
 
-We based these simulations on 2001-2014 household (HH) income and expected age at death data from Chetty et al.'s 2016 JAMA paper (https://healthinequality.org/), EPI's 2017 report on MW violations (https://www.epi.org/publication/employers-steal-billions-from-workers-paychecks-each-year/), and Bernhardt et. al's 2009  report on all forms of wage theft. First, we fitted an OLS model to Chetty’s pooled 2001-2014 data (200 rows, one for each gender-income percentile), with race-ethnicity-adjusted expected age at death for 40-year-olds (expected age at death) as the dependent variable and a gender * HH income interaction term as the independent variable (with HH income specified as a 7-knot restricted cubic spline), weighted by the frequency counts in the Chetty data. Second, we created a large simulated population (1.4mm - 1/1000th the size of the underlying Chetty sample), with HH income as observed in the Chetty data, counts of respondents at each HH income level and gender stratum as observed in the Chetty data, and expected age at death in each stratum as predicted by the linear model. We also estimated expected age at death in a hypothetical population in which wage theft were eliminated. To do so, we used the same approach, but at each HH income level, we created a hypothetical income variable that added back in workers' stolen wages, and used that hypothetical income variable to predict expected age at death for each respondent in the population. We then estimated the difference in mean expected age at death in the observed versus counterfactual scenarios overall and within income deciles. We also multiplied these mean differences by the total age-40 U.S. population in a given stratum from 2001-2014 (https://usa.ipums.org/usa/) to estimate the Total years extended by our counterfactual scenarios among 40-year-olds in 2014. Finally, we estimated difference in differences (DiD), comparing differences in mean expected age at death in the observed versus counterfactual scenarios in the bottom decile versus in the top decile. We evaluated three scenarios regarding the prevalence and cost of wage theft for each gender and income stratum: 1) wage theft as common and costly as in the EPI data, 2) wage theft ~2.6x as common as in the EPI data, but the same cost (Bernhardt et al. estimated that while 26% of workers had experienced MW violations in the prior week, 68% had experienced any type of wage theft; Bernhardt et al. also estimated that total wage theft costed workers $2936 annually [2016 dollars], about the cost of MW violations alone in the EPI report), and 3) wage theft ~2.6x as common and ~1.7x as costly as in the EPI data (Bernhardt estimated that MW violations contributed to 58% of workers’ total stolen wages).
+We based these simulations on 2001-2014 household (HH) income and expected age at death data from Chetty et al.'s 2016 JAMA paper (https://healthinequality.org/), EPI's 2017 report on MW violations (https://www.epi.org/publication/employers-steal-billions-from-workers-paychecks-each-year/), and Bernhardt et. al's 2009  report on all forms of wage theft (https://www.nelp.org/publication/broken-laws-unprotected-workers-violations-of-employment-and-labor-laws-in-americas-cities/). First, we fitted an OLS model to Chetty’s pooled 2001-2014 data (200 rows, one for each gender-income percentile), with race-ethnicity-adjusted expected age at death for 40-year-olds (expected age at death) as the dependent variable and a gender * HH income interaction term as the independent variable (with HH income specified as a 7-knot restricted cubic spline), weighted by the frequency counts in the Chetty data. Second, we created a large simulated population (1.4mm - 1/1000th the size of the underlying Chetty sample), with HH income as observed in the Chetty data, counts of respondents at each HH income level and gender stratum as observed in the Chetty data, and expected age at death in each stratum as predicted by the linear model. We also estimated expected age at death in a hypothetical population in which wage theft were eliminated. To do so, we used the same approach, but at each HH income level, we created a hypothetical income variable that added back in workers' stolen wages, and used that hypothetical income variable to predict expected age at death for each respondent in the population. We then estimated the difference in mean expected age at death in the observed versus counterfactual scenarios overall and within income deciles. We also multiplied these mean differences by the total age-40 U.S. population in a given stratum from 2001-2014 (https://usa.ipums.org/usa/) to estimate the Total years extended by our counterfactual scenarios among 40-year-olds in 2014. Finally, we estimated difference in differences (DiD), comparing differences in mean expected age at death in the observed versus counterfactual scenarios in the bottom decile versus in the top decile. We evaluated three scenarios regarding the prevalence and cost of wage theft for each gender and income stratum: 1) wage theft as common and costly as in the EPI data, 2) wage theft ~2.6x as common as in the EPI data, but the same cost (Bernhardt et al. estimated that while 26% of workers had experienced MW violations in the prior week, 68% had experienced any type of wage theft; Bernhardt et al. also estimated that total wage theft costed workers $2936 annually [2016 dollars], about the cost of MW violations alone in the EPI report), and 3) wage theft ~2.6x as common and ~1.7x as costly as in the EPI data (Bernhardt estimated that MW violations contributed to 58% of workers’ total stolen wages).
 
 We estimated standard errors (SEs) for our overall mean expected age at death estimates for a given gender under a given scenario as follows:
 <br />
@@ -37,6 +37,7 @@ Likewise, we estimated SEs for the DiD as follows:
 
 * Relationship estimated by Chetty is causal 
 * Preventing wage theft would have affected life expectancy solely through income’s direct individual-level effects (e.g., no spillover effects within families, no contextual-level effects, no effects through pathways other than increased income, no loss of means-tested benefits)
+* Income itself is what matters for life expectancy rather than income rank
 * Those at the top of the income distribution would not have lost income if wage theft were prevented (a minor assumption, given the weak income-mortality association at higher incomes
 * Cooper and Kroeger’s estimates apply to the same populations as Chetty et al.’s, including within subgroups
 
@@ -72,7 +73,7 @@ chetty %>%
 
 #merge in ACS data on population counts from 2001-2014; restrict to those with non-zero incomes, age 40, and not living in group quarters (per IPUMS recommendation)
 fread(here("ACS_IPUMS_2001_2014.csv")) %>%
-  filter(FTOTINC>0 & AGE==40 & (GQ==1 | GQ==2)) %>% #family income yields similar estimates to household income, but I assume "family income" is closer to Chetty's definition since joint tax filers are likely to be related
+  filter(FTOTINC>0 & AGE==40 & (GQ==1 | GQ==2)) %>% #family income yields similar estimates to household income, but assume "family income" is closer to Chetty's definition since joint tax filers are likely to be related
   mutate(gnd=ifelse(SEX==1, "Men", "Women")) %>%
   group_by(gnd) %>%
   summarise(ACS_pop=sum(PERWT)) %>%
@@ -283,18 +284,18 @@ point_ests <- function(pctiled1, pctiled2, rooted, fractioned){
               sdd=mean(sd),
               ACS_pop=mean(ACS_pop)) %>%
     ungroup() %>%
+    arrange(desc(gnd), type) %>%   
     group_by(gnd) %>%
-    mutate(meaned=meaned, #SE for Mean expected age at death is mean SE divided by sqrt of number of SE estimates [mean(SE)/sqrt(number of SE estimates, e.g., 100 in full sample; 10 w/in deciles)] 
+    mutate(meaned=meaned, #SE for mean expected age at death is mean SE divided by sqrt of number of SE estimates [mean(SE)/sqrt(number of SE estimates, e.g., 100 in full sample; 10 w/in deciles)] 
            meaned_lower=meaned-(1.96 * (sdd/sqrt(rooted))),
            meaned_upper=meaned+(1.96 * (sdd/sqrt(rooted))),
-           diff=meaned-first(meaned), #SE for difference in Mean expected age at death is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
+           diff=meaned-first(meaned), #SE for difference in mean expected age at death is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
            diff_lower=diff-(1.96 * (sqrt(2)*(sdd/sqrt(rooted)))),
            diff_upper=diff+(1.96 * (sqrt(2)*(sdd/sqrt(rooted)))),
            diff_pop=diff*ACS_pop*fractioned,
            diff_lower_pop=diff_lower*ACS_pop*fractioned,
            diff_upper_pop=diff_upper*ACS_pop*fractioned) %>% 
-    dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop") %>%
-    arrange(desc(gnd), type)
+    dplyr::select('gnd', 'type', 'meaned', 'meaned_lower', 'meaned_upper', 'diff', 'diff_lower', "diff_upper", 'diff_pop', 'diff_lower_pop', "diff_upper_pop")
 }
 
 #DiD function
@@ -357,7 +358,7 @@ point_ests_plots <- function(){
     arrange(gnd, decile, type) %>%
     ungroup() %>%
     group_by(gnd, decile) %>%
-    mutate(diff=meaned-first(meaned), #SE for difference in Mean expected age at death is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
+    mutate(diff=meaned-first(meaned), #SE for difference in mean expected age at death is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
            diff_lower=diff-(1.96 * (sqrt(2)*(sdd/sqrt(10)))),
            diff_upper=diff+(1.96 * (sqrt(2)*(sdd/sqrt(10)))),
            diff_pop=diff*ACS_pop*0.1,
@@ -564,7 +565,7 @@ read.csv(here('health_ineq_online_table_2.csv')) %>%
 
 #merge in ACS data on population counts in 2014; restrict to those with non-zero incomes, age 40, and not living in group quarters (per IPUMS recommendation)
 fread(here("ACS_IPUMS_2001_2014.csv")) %>%
-  filter(FTOTINC>0 & AGE==40 & YEAR==2014 & (GQ==1 | GQ==2)) %>% #family income yields similar estimates to household income, but I assume "family income" is a bit closer to Chetty's definition since joint tax filers are likely to be related
+  filter(FTOTINC>0 & AGE==40 & YEAR==2014 & (GQ==1 | GQ==2)) %>% #family income yields similar estimates to household income, but assume "family income" is a bit closer to Chetty's definition since joint tax filers are likely to be related
   mutate(gnd=ifelse(SEX==1, "Men", "Women")) %>%
   group_by(gnd) %>%
   summarise(ACS_pop=sum(PERWT)) %>%
@@ -862,7 +863,7 @@ read.csv(here('health_ineq_online_table_7.csv')) %>%
   filter(czname %in% c('Detroit', 'New York City')) %>%
   select(c(2, seq(8,164,2), 166:206)) -> chetty_msa
 
-#calculate mean income by ventile across years so that we can fit wage theft models - these match published estimates in Chetty paper presented in Figure 4
+#calculate mean income by ventile across years so that we can fit wage theft models with income as independent variable - these match published estimates in Chetty paper presented in Figure 4
 chetty_nat %>%
   mutate(pctile=ntile(pctile, 20)) %>%
   group_by(gnd, pctile) %>%
@@ -897,7 +898,7 @@ chetty_msa_long %>%
          state=ifelse(czname=="Detroit", "Michigan", "New York")) %>%
   arrange(czname, pctile, gnd) -> chetty_msa_long
 
-#merge in ACS data on population counts; MET2013 not available from 2001-2004 so we'll need to extrapolate
+#merge in ACS data on population counts; MET2013 not available from 2001-2004 so we'll need to extrapolate based on 2005-2014 average population
 fread(here("ACS_IPUMS_2001_2014.csv")) %>%
   filter(YEAR>=2005 & FTOTINC>0 & AGE==40 & (MET2013==19820 | MET2013==35620)) %>% 
   mutate(gnd=ifelse(SEX==1, "Men", "Women"),
@@ -1001,7 +1002,7 @@ int_func_cz <- function(prop, inc, scenario){ #prop and inc are multipliers for 
   chetty_msa_long_tot %>%
     group_by(gnd, hh_inc_cat, czname) %>%
     sample_frac(size=prop_theft*prop, replace=F) %>%
-    mutate(hh_inc_rev=hh_inc + inc*yr_theft) %>% #adjusted for inflation (Chetty in 2012 $, EPI estimates from 2013-2015, i.e., 2014 $?)
+    mutate(hh_inc_rev=hh_inc + inc*yr_theft) %>% 
     ungroup() %>% 
     dplyr::select('id', 'hh_inc_rev') -> chetty_samps
 
@@ -1101,11 +1102,12 @@ point_ests_cz <- function(pctiled1, pctiled2, rooted, fractioned){
               sdd=mean(sd),
               ACS_pop=mean(ACS_pop)) %>%
     ungroup() %>%
+    arrange(czname, desc(gnd), type) %>%
     group_by(gnd, czname) %>%
-    mutate(meaned=meaned, #SE for Mean expected age at death is mean SE divided by sqrt of number of SE estimates [mean(SE)/sqrt(number of SE estimates, e.g., 100 in full sample; 10 w/in deciles)] 
+    mutate(meaned=meaned, #SE for mean expected age at death is mean SE divided by sqrt of number of SE estimates [mean(SE)/sqrt(number of SE estimates), e.g., 100 in full sample; 10 w/in deciles)] 
            meaned_lower=meaned-(1.96 * (sdd/sqrt(rooted))),
            meaned_upper=meaned+(1.96 * (sdd/sqrt(rooted))),
-           diff=meaned-first(meaned), #SE for difference in Mean expected age at death is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
+           diff=meaned-first(meaned), #SE for difference in mean expected age at death is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
            diff_lower=diff-(1.96 * (sqrt(2)*(sdd/sqrt(rooted)))),
            diff_upper=diff+(1.96 * (sqrt(2)*(sdd/sqrt(rooted)))),
            diff_pop=diff*ACS_pop*fractioned,
@@ -1173,10 +1175,10 @@ binded %>%
   summarise(meaned=mean(sim_1),
             sdd=mean(sd),
             ACS_pop=mean(ACS_pop)) %>%
-  arrange(gnd, quintile, type) %>%
+  arrange(czname, gnd, quintile, type) %>%
   ungroup() %>%
   group_by(gnd, quintile, czname) %>%
-  mutate(diff=meaned-first(meaned),  #SE for difference in Mean expected age at death is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
+  mutate(diff=meaned-first(meaned),  #SE for difference in mean expected age at death is sqrt(2)*[mean(SE)/sqrt(number of SE estimates)] (reduced from formula for SE of diff: sqrt[(SE 1st)^2*(SE 2nd)^2])  
          diff_lower=diff-(1.96 * (sqrt(2)*sdd/sqrt(4))),
          diff_upper=diff+(1.96 * (sqrt(2)*sdd/sqrt(4))),
          diff_pop=diff*ACS_pop*0.2,
